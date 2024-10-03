@@ -1,14 +1,16 @@
+# ./outputs.tf
+
+# master 스냅샷 ID 출력
 output "master_snapshot_id" {
-  description = "k8s-master의 EBS 스냅샷 ID"
-  value       = aws_ebs_snapshot.master_snapshot.id
+  value = aws_ebs_snapshot.k8s_snapshots["master"].id
 }
 
+# node1 스냅샷 ID 출력
 output "node1_snapshot_id" {
-  description = "k8s-node1의 EBS 스냅샷 ID"
-  value       = aws_ebs_snapshot.node1_snapshot.id
+  value = aws_ebs_snapshot.k8s_snapshots["node1"].id
 }
 
+# node2 스냅샷 ID 출력
 output "node2_snapshot_id" {
-  description = "k8s-node2의 EBS 스냅샷 ID"
-  value       = aws_ebs_snapshot.node2_snapshot.id
+  value = aws_ebs_snapshot.k8s_snapshots["node2"].id
 }
