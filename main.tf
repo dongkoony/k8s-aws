@@ -1,3 +1,5 @@
+# ./main.tf
+
 provider "aws" {
   region = var.region
 }
@@ -30,6 +32,15 @@ resource "aws_security_group" "k8s_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  # 포트 8080: 워커 노드가 마스터 노드에서 HTTP로 Join 명령어(kubeadm_join_cmd.sh)를 받을 수 있도록 허용하는 포트
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
 
   # 모든 아웃바운드 트래픽을 허용하는 egress 규칙 (모든 외부 통신 허용)
   egress {
@@ -87,12 +98,14 @@ locals {
 resource "aws_instance" "k8s_instances" {
   for_each = toset(["master", "node1", "node2"])
 
-  ami           = var.ami_id
-  instance_type = each.key == "master" ? var.master_instance_type : var.node_instance_type
-  key_name      = var.key_name
+  availability_zone = var.availability_zone
+  ami               = var.ami_id
+  instance_type     = each.key == "master" ? var.master_instance_type : var.node_instance_type
+  key_name          = var.key_name
 
   tags = {
     Name = "k8s-${each.key}"
+    Role      = each.key == "master" ? "master" : "worker"  # 마스터와 워커 구분을 위한 태그
   }
 
   security_groups = [aws_security_group.k8s_sg.name]
