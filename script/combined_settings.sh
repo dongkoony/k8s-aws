@@ -1,222 +1,278 @@
 #!/bin/bash
 
-# 로그 파일 위치 설정
-LOG_FILE="/home/ubuntu/combined_settings.log"
+#################################################################
+# ---------------- 환경 변수 설정 섹션 ------------------
+#################################################################
 
-# 로그 파일 초기화
-> $LOG_FILE
+# 로그 설정
+readonly LOG_FILE="/home/ubuntu/combined_settings.log"
+readonly LOG_PREFIX="[K8S-SETUP]"
 
-######################################################################
-# ---------------- ssh port / timectl settings 내용 ------------------
-######################################################################
+# 시스템 설정
+readonly TIMEZONE="Asia/Seoul"
+readonly SSH_PORT="1717"
+readonly SSH_CONFIG="/etc/ssh/sshd_config"
 
-# 시스템 시간대를 서울로 설정
-echo "시간대를 Asia/Seoul로 설정 중" | tee -a $LOG_FILE
-if sudo timedatectl set-timezone Asia/Seoul >> $LOG_FILE 2>&1; then
-    echo "서울(한국) 시간대 설정 완료" | tee -a $LOG_FILE
-else
-    echo "시간대 설정 실패" | tee -a $LOG_FILE
-    exit 1
-fi
+# 네트워크 설정
+readonly POD_CIDR="10.244.0.0/16"
+readonly CNI_VERSION="v3.14"
+readonly CNI_MANIFEST="https://docs.projectcalico.org/v3.14/manifests/calico.yaml"
 
-# SSH 포트 변경
-echo "SSH 포트를 1717로 변경 중" | tee -a $LOG_FILE
-if sudo sed -i 's/#Port 22/Port 1717/g' /etc/ssh/sshd_config >> $LOG_FILE 2>&1; then
-    if sudo systemctl restart sshd >> $LOG_FILE 2>&1; then
-        echo "SSH 서비스 재시작 완료" | tee -a $LOG_FILE
-    else
-        echo "SSH 서비스 재시작 실패" | tee -a $LOG_FILE
+# 쿠버네티스 설정
+readonly K8S_VERSION="1.27.16-1.1"
+readonly PACKAGES=(
+    "kubelet=${K8S_VERSION}"
+    "kubeadm=${K8S_VERSION}"
+    "kubectl=${K8S_VERSION}"
+)
+
+# 시스템 요구사항
+readonly MIN_CPU_CORES=2
+readonly MIN_MEMORY_GB=2
+readonly REQUIRED_PORTS=(6443 10250 10251 10252)
+
+# 재시도 설정
+readonly MAX_RETRIES=3
+readonly RETRY_INTERVAL=30
+readonly WAIT_INTERVAL=10
+
+#################################################################
+# ---------------- 유틸리티 함수 섹션 ------------------
+#################################################################
+
+log() {
+    local message="$1"
+    echo "${LOG_PREFIX} $(date '+%Y-%m-%d %H:%M:%S') - ${message}" | tee -a "${LOG_FILE}"
+}
+
+check_error() {
+    if [ $? -ne 0 ]; then
+        log "오류: $1"
         exit 1
     fi
-else
-    echo "SSH 포트 변경 실패" | tee -a $LOG_FILE
-    exit 1
-fi
+}
 
-#############################################################
-# ---------------- Kubernetes_install 내용 ------------------
-#############################################################
+wait_for_service() {
+    local service_name="$1"
+    local max_attempts=30
+    local attempt=1
 
-# 마스터 노드의 프라이빗 IP 가져오기
-MASTER_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-if [ -z "$MASTER_IP" ]; then
-    echo "마스터 노드 IP 가져오기 실패" | tee -a $LOG_FILE
-    exit 1
-fi
+    while ! systemctl is-active --quiet "${service_name}"; do
+        if [ ${attempt} -ge ${max_attempts} ]; then
+            log "${service_name} 서비스 시작 실패"
+            return 1
+        fi
+        log "${service_name} 서비스 대기 중... (${attempt}/${max_attempts})"
+        sleep ${WAIT_INTERVAL}
+        attempt=$((attempt + 1))
+    done
+    return 0
+}
 
-# EC2 태그에서 Role 값을 가져와서 마스터/워커 노드 구분
-NODE_ROLE=$(curl -s http://169.254.169.254/latest/meta-data/tags/instance/Role)
+verify_system_requirements() {
+    log "시스템 요구사항 검증 시작"
 
-# Swap 비활성화
-echo "Swap 비활성화 중" | tee -a $LOG_FILE
-if sudo swapoff -a >> $LOG_FILE 2>&1 && sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab >> $LOG_FILE 2>&1; then
-    echo "Swap 비활성화 완료" | tee -a $LOG_FILE
-else
-    echo "Swap 비활성화 실패" | tee -a $LOG_FILE
-    exit 1
-fi
+    # CPU 코어 수 확인
+    local cpu_cores=$(nproc)
+    if [ ${cpu_cores} -lt ${MIN_CPU_CORES} ]; then
+        log "CPU 코어 수 부족: ${cpu_cores} (필요: ${MIN_CPU_CORES})"
+        return 1
+    fi
 
-# 네트워크 모듈 로드
-echo "네트워크 모듈 로드 중" | tee -a $LOG_FILE
-cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
-overlay
-br_netfilter
-EOF
+    # 메모리 확인
+    local memory_gb=$(free -g | awk '/^Mem:/{print $2}')
+    if [ ${memory_gb} -lt ${MIN_MEMORY_GB} ]; then
+        log "메모리 부족: ${memory_gb}GB (필요: ${MIN_MEMORY_GB}GB)"
+        return 1
+    fi
 
-sudo modprobe overlay >> $LOG_FILE 2>&1 || { echo "overlay 모듈 로드 실패" | tee -a $LOG_FILE; exit 1; }
-sudo modprobe br_netfilter >> $LOG_FILE 2>&1 || { echo "br_netfilter 모듈 로드 실패" | tee -a $LOG_FILE; exit 1; }
+    # 포트 확인
+    for port in "${REQUIRED_PORTS[@]}"; do
+        if netstat -tuln | grep ":${port} " > /dev/null; then
+            log "포트 ${port}가 이미 사용 중"
+            return 1
+        fi
+    done
 
-# sysctl 파라미터 설정
-echo "sysctl 파라미터 설정 중" | tee -a $LOG_FILE
-cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+    log "시스템 요구사항 검증 완료"
+    return 0
+}
+
+#################################################################
+# ---------------- 시스템 설정 섹션 ------------------
+#################################################################
+
+setup_system() {
+    log "시스템 기본 설정 시작"
+
+    # 시간대 설정
+    timedatectl set-timezone ${TIMEZONE}
+    check_error "시간대 설정 실패"
+
+    # SSH 포트 변경
+    sed -i "s/#Port 22/Port ${SSH_PORT}/g" ${SSH_CONFIG}
+    systemctl restart sshd
+    check_error "SSH 설정 변경 실패"
+
+    # Swap 비활성화
+    swapoff -a
+    sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+    check_error "Swap 비활성화 실패"
+
+    log "시스템 기본 설정 완료"
+}
+
+#################################################################
+# ---------------- 네트워크 설정 섹션 ------------------
+#################################################################
+
+setup_network() {
+    log "네트워크 설정 시작"
+
+    # 커널 모듈 설정
+    local modules=(overlay br_netfilter)
+    for module in "${modules[@]}"; do
+        modprobe ${module}
+        echo ${module} >> /etc/modules-load.d/k8s.conf
+    done
+
+    # sysctl 파라미터 설정
+    cat > /etc/sysctl.d/k8s.conf <<EOF
 net.bridge.bridge-nf-call-iptables  = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 net.ipv4.ip_forward                 = 1
 EOF
+    sysctl --system
+    check_error "네트워크 설정 실패"
 
-if sudo sysctl --system >> $LOG_FILE 2>&1; then
-    echo "sysctl 파라미터 설정 완료" | tee -a $LOG_FILE
-else
-    echo "sysctl 파라미터 설정 실패" | tee -a $LOG_FILE
-    exit 1
-fi
+    log "네트워크 설정 완료"
+}
 
-# Docker 설치
-echo "Docker 설치 중" | tee -a $LOG_FILE
-if sudo apt-get update -y >> $LOG_FILE 2>&1 && sudo apt-get install -y docker.io >> $LOG_FILE 2>&1; then
-    echo "Docker 설치 완료" | tee -a $LOG_FILE
-else
-    echo "Docker 설치 실패" | tee -a $LOG_FILE
-    exit 1
-fi
+#################################################################
+# ---------------- Docker 설치 섹션 ------------------
+#################################################################
 
-# Docker 시작 및 부팅 시 자동 시작 설정
-echo "Docker 서비스 시작 중" | tee -a $LOG_FILE
-if sudo systemctl enable --now docker >> $LOG_FILE 2>&1; then
-    echo "Docker 서비스 설정 완료" | tee -a $LOG_FILE
-else
-    echo "Docker 서비스 시작 실패" | tee -a $LOG_FILE
-    exit 1
-fi
+install_docker() {
+    log "Docker 설치 시작"
+    
+    apt-get update -y
+    apt-get install -y docker.io
+    check_error "Docker 설치 실패"
 
-# containerd 설치
-echo "containerd 설치 중" | tee -a $LOG_FILE
-if sudo apt install -y containerd >> $LOG_FILE 2>&1; then
-    echo "containerd 설치 완료" | tee -a $LOG_FILE
-else
-    echo "containerd 설치 실패" | tee -a $LOG_FILE
-    exit 1
-fi
+    systemctl enable --now docker
+    check_error "Docker 서비스 활성화 실패"
 
-# containerd 기본 설정 파일 생성 및 SystemdCgroup 설정
-echo "containerd 설정 중" | tee -a $LOG_FILE
-sudo mkdir -p /etc/containerd
-if sudo containerd config default | sudo tee /etc/containerd/config.toml >> $LOG_FILE 2>&1; then
-    if sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml >> $LOG_FILE 2>&1 && sudo systemctl restart containerd >> $LOG_FILE 2>&1; then
-        echo "containerd 설정 및 재시작 완료" | tee -a $LOG_FILE
-    else
-        echo "containerd 설정 변경 실패" | tee -a $LOG_FILE
-        exit 1
-    fi
-else
-    echo "containerd 설정 파일 생성 실패" | tee -a $LOG_FILE
-    exit 1
-fi
+    # containerd 설치 및 설정
+    apt install -y containerd
+    mkdir -p /etc/containerd
+    containerd config default | tee /etc/containerd/config.toml
+    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+    systemctl restart containerd
+    check_error "containerd 설정 실패"
 
-# Kubernetes 설치
-echo "Kubernetes 1.27 패키지 설치 중" | tee -a $LOG_FILE
-if sudo apt-get install -y apt-transport-https ca-certificates curl >> $LOG_FILE 2>&1 &&
-    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.27/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg &&
-    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.27/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list >> $LOG_FILE 2>&1 &&
-    sudo apt-get update -y >> $LOG_FILE 2>&1 &&
-    sudo apt-get install -y kubelet=1.27.16-1.1 kubeadm=1.27.16-1.1 kubectl=1.27.16-1.1 >> $LOG_FILE 2>&1; then
-    echo "Kubernetes 설치 완료" | tee -a $LOG_FILE
-else
-    echo "Kubernetes 설치 실패" | tee -a $LOG_FILE
-    exit 1
-fi
+    log "Docker 설치 완료"
+}
 
-# Kubernetes 버전 고정
-sudo apt-mark hold kubelet kubeadm kubectl >> $LOG_FILE 2>&1 || { echo "Kubernetes 버전 고정 실패" | tee -a $LOG_FILE; exit 1; }
+#################################################################
+# ---------------- 쿠버네티스 설치 섹션 ------------------
+#################################################################
 
-# 마스터 노드 초기화 및 Join 명령어 제공
-if [[ "$NODE_ROLE" == "master" ]]; then
-    echo "Kubernetes 클러스터 초기화 중 (마스터)" | tee -a $LOG_FILE
-    sudo kubeadm init --apiserver-advertise-address=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4) --pod-network-cidr=10.244.0.0/16 | tee -a $LOG_FILE
-    if [ ${PIPESTATUS[0]} -eq 0 ]; then
-        echo "Kubernetes 클러스터 초기화 완료" | tee -a $LOG_FILE
-    else
-        echo "Kubernetes 클러스터 초기화 실패" | tee -a $LOG_FILE
+install_kubernetes() {
+    log "쿠버네티스 설치 시작"
+
+    # 저장소 설정
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.27/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.27/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
+
+    # 패키지 설치
+    apt-get update
+    apt-get install -y "${PACKAGES[@]}"
+    check_error "쿠버네티스 패키지 설치 실패"
+
+    # 버전 고정
+    apt-mark hold kubelet kubeadm kubectl
+    check_error "쿠버네티스 버전 고정 실패"
+
+    log "쿠버네티스 설치 완료"
+}
+
+#################################################################
+# ---------------- 마스터 노드 초기화 섹션 ------------------
+#################################################################
+
+initialize_master() {
+    log "마스터 노드 초기화 시작"
+
+    local master_ip=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+    check_error "마스터 IP 조회 실패"
+
+    local retry_count=0
+    while [ ${retry_count} -lt ${MAX_RETRIES} ]; do
+        if kubeadm init --apiserver-advertise-address=${master_ip} --pod-network-cidr=${POD_CIDR} > /var/log/kubeadm_init.log 2>&1; then
+            log "마스터 노드 초기화 성공"
+            break
+        fi
+        retry_count=$((retry_count + 1))
+        log "초기화 실패. ${RETRY_INTERVAL}초 후 재시도... (${retry_count}/${MAX_RETRIES})"
+        sleep ${RETRY_INTERVAL}
+    done
+
+    if [ ${retry_count} -eq ${MAX_RETRIES} ]; then
+        log "마스터 노드 초기화 최대 시도 횟수 초과"
         exit 1
     fi
 
     # kubeconfig 설정
-    echo "kubectl 설정 중" | tee -a $LOG_FILE
-    mkdir -p $HOME/.kube
-    sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
-    sudo chown $(id -u):$(id -g) $HOME/.kube/config
-    if [ $? -ne 0 ]; then
-        echo "kubectl 설정 실패" | tee -a $LOG_FILE
-        exit 1
-    fi
+    mkdir -p /home/ubuntu/.kube
+    cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
+    chown $(id -u ubuntu):$(id -g ubuntu) /home/ubuntu/.kube/config
 
-    # Join 명령어 저장
-    echo "Join 명령어 생성 중..." | tee -a $LOG_FILE
-    JOIN_CMD=$(sudo kubeadm token create --print-join-command)
+    # Calico CNI 설치
+    kubectl apply -f ${CNI_MANIFEST}
+    check_error "Calico CNI 설치 실패"
 
-    if [ $? -eq 0 ]; then
-        echo "$JOIN_CMD" > /home/ubuntu/kubeadm_join_cmd.sh
-        echo "Join 명령어가 /home/ubuntu/kubeadm_join_cmd.sh 파일에 저장되었습니다." | tee -a $LOG_FILE
-    else
-        echo "Join 명령어 생성 실패" | tee -a $LOG_FILE
-        cat $LOG_FILE
-        exit 1
-    fi
+    log "마스터 노드 초기화 완료"
+}
 
-    # HTTP 서버로 Join 명령어 제공 (포트 8080)
-    HTTP_INTERVAL=30
+#################################################################
+# ---------------- Join 명령어 생성 섹션 ------------------
+#################################################################
 
-    echo "HTTP 서버를 통해 Join 명령어 제공 중" | tee -a $LOG_FILE
-    cd /home/ubuntu
-    nohup python3 -m http.server 8080 &
-    sleep $HTTP_INTERVAL  # 서버가 완전히 실행될 때까지 대기
-
-    # Calico 네트워크 플러그인 설치
-    echo "Calico 네트워크 플러그인 설치 중" | tee -a $LOG_FILE
-    if kubectl apply -f https://docs.projectcalico.org/v3.14/manifests/calico.yaml >> $LOG_FILE 2>&1; then
-        echo "Calico 네트워크 플러그인 설치 완료!" | tee -a $LOG_FILE
-    else
-        echo "Calico 설치 실패" | tee -a $LOG_FILE
-        exit 1
-    fi
-
-else
-    # 워커 노드 Join
-    echo "Kubernetes 워커 노드로 Join 중" | tee -a $LOG_FILE
-    MAX_RETRIES=5
-    RETRY_INTERVAL=10
+generate_join_command() {
+    log "Join 명령어 생성 시작"
     
-    for i in $(seq 1 $MAX_RETRIES); do
-        if curl -o /home/ubuntu/kubeadm_join_cmd.sh http://$MASTER_IP:8080/kubeadm_join_cmd.sh; then
-            echo "Join 명령어 파일 다운로드 성공" | tee -a $LOG_FILE
-            break
-        fi
-        echo "Join 명령어 파일 다운로드 실패. 재시도 중... ($i/$MAX_RETRIES)" | tee -a $LOG_FILE
-        sleep $RETRY_INTERVAL
-    done
+    local join_command=$(kubeadm token create --print-join-command)
+    echo "${join_command}" > /home/ubuntu/kubeadm_join_cmd.sh
+    check_error "Join 명령어 생성 실패"
 
-    if [ -f "/home/ubuntu/kubeadm_join_cmd.sh" ]; then
-        sudo bash /home/ubuntu/kubeadm_join_cmd.sh | tee -a $LOG_FILE
-        if [ ${PIPESTATUS[0]} -eq 0 ]; then
-            echo "워커 노드 Join 성공" | tee -a $LOG_FILE
-        else
-            echo "워커 노드 Join 실패" | tee -a $LOG_FILE
-            exit 1
-        fi
-    else
-        echo "kubeadm Join 명령어 파일이 없습니다." | tee -a $LOG_FILE
-        exit 1
+    # HTTP 서버 시작
+    cd /home/ubuntu
+    nohup python3 -m http.server 8080 >> "${LOG_FILE}" 2>&1 &
+    sleep 30  # HTTP 서버 시작 대기
+
+    log "Join 명령어 생성 완료"
+}
+
+#################################################################
+# ---------------- 메인 실행 섹션 ------------------
+#################################################################
+
+main() {
+    log "설치 스크립트 시작"
+
+    verify_system_requirements
+    setup_system
+    setup_network
+    install_docker
+    install_kubernetes
+
+    if [[ "${NODE_ROLE}" == "master" ]]; then
+        initialize_master
+        generate_join_command
     fi
-fi
 
-echo "Kubernetes 설치 및 설정 완료!" | tee -a $LOG_FILE
+    log "설치 스크립트 완료"
+}
+
+# 스크립트 실행
+main
