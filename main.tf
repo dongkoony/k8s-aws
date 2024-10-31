@@ -1,5 +1,3 @@
-# ./main.tf
-
 provider "aws" {
   region = var.region
 }
@@ -9,7 +7,15 @@ resource "aws_security_group" "k8s_sg" {
   name        = "k8s-security-group"
   description = "Security group for Kubernetes master and nodes"
 
-  # 포트 1717: SSH 포트 (기본 22에서 1717로 변경된 SSH 접근을 위한 포트)
+  # 초기 SSH 연결용 22번 포트
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # 변경된 SSH 포트 1717
   ingress {
     from_port   = 1717
     to_port     = 1717
@@ -17,7 +23,7 @@ resource "aws_security_group" "k8s_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # 포트 6443: Kubernetes API 서버 포트 (Kubernetes 클러스터 관리를 위한 포트)
+  # Kubernetes API 서버
   ingress {
     from_port   = 6443
     to_port     = 6443
@@ -25,7 +31,7 @@ resource "aws_security_group" "k8s_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # 포트 2376: Docker 데몬이 외부에서 안전하게 접근할 수 있도록 하는 포트 (Docker TLS 포트)
+  # Docker 데몬
   ingress {
     from_port   = 2376
     to_port     = 2376
@@ -33,7 +39,7 @@ resource "aws_security_group" "k8s_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # 포트 8080: 워커 노드가 마스터 노드에서 HTTP로 Join 명령어(kubeadm_join_cmd.sh)를 받을 수 있도록 허용하는 포트
+  # HTTP
   ingress {
     from_port   = 8080
     to_port     = 8080
@@ -41,8 +47,23 @@ resource "aws_security_group" "k8s_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Calico CNI
+  ingress {
+    from_port   = 179
+    to_port     = 179
+    protocol    = "tcp"
+    self        = true
+    description = "Calico BGP"
+  }
 
-  # 모든 아웃바운드 트래픽을 허용하는 egress 규칙 (모든 외부 통신 허용)
+  # 내부 통신
+  ingress {
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
+    self      = true
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -51,9 +72,9 @@ resource "aws_security_group" "k8s_sg" {
   }
 }
 
-# master 스냅샷이 존재하는 경우만 데이터 조회
+# 스냅샷 데이터 조회
 data "aws_ebs_snapshot" "master_snapshot" {
-  count       = length(try([for snapshot in data.aws_ebs_snapshot.master_snapshot: snapshot.id], [])) > 0 ? 1 : 0
+  count       = length(try([for snapshot in data.aws_ebs_snapshot.master_snapshot : snapshot.id], [])) > 0 ? 1 : 0
   most_recent = true
   owners      = ["self"]
 
@@ -64,7 +85,7 @@ data "aws_ebs_snapshot" "master_snapshot" {
 }
 
 data "aws_ebs_snapshot" "node1_snapshot" {
-  count       = length(try([for snapshot in data.aws_ebs_snapshot.node1_snapshot: snapshot.id], [])) > 0 ? 1 : 0
+  count       = length(try([for snapshot in data.aws_ebs_snapshot.node1_snapshot : snapshot.id], [])) > 0 ? 1 : 0
   most_recent = true
   owners      = ["self"]
 
@@ -75,7 +96,7 @@ data "aws_ebs_snapshot" "node1_snapshot" {
 }
 
 data "aws_ebs_snapshot" "node2_snapshot" {
-  count       = length(try([for snapshot in data.aws_ebs_snapshot.node2_snapshot: snapshot.id], [])) > 0 ? 1 : 0
+  count       = length(try([for snapshot in data.aws_ebs_snapshot.node2_snapshot : snapshot.id], [])) > 0 ? 1 : 0
   most_recent = true
   owners      = ["self"]
 
@@ -86,7 +107,6 @@ data "aws_ebs_snapshot" "node2_snapshot" {
 }
 
 locals {
-  # 각 스냅샷의 ID를 참조할 수 있는지 확인하고, 없으면 null로 설정
   snapshot_ids = {
     master = length(data.aws_ebs_snapshot.master_snapshot) > 0 ? data.aws_ebs_snapshot.master_snapshot[0].id : null,
     node1  = length(data.aws_ebs_snapshot.node1_snapshot) > 0 ? data.aws_ebs_snapshot.node1_snapshot[0].id : null,
@@ -94,66 +114,205 @@ locals {
   }
 }
 
-# k8s-master, node1, node2 인스턴스 생성
-resource "aws_instance" "k8s_instances" {
-  for_each = toset(["master", "node1", "node2"])
-
-  availability_zone = var.availability_zone
+# 마스터 노드 생성
+resource "aws_instance" "k8s_master" {
   ami               = var.ami_id
-  instance_type     = each.key == "master" ? var.master_instance_type : var.node_instance_type
+  instance_type     = var.master_instance_type
+  availability_zone = var.availability_zone
   key_name          = var.key_name
 
   tags = {
-    Name = "k8s-${each.key}"
-    Role      = each.key == "master" ? "master" : "worker"  # 마스터와 워커 구분을 위한 태그
+    Name = "k8s-master"
+    Role = "master"
   }
 
   security_groups = [aws_security_group.k8s_sg.name]
+  user_data      = file("./script/system_settings.sh")
 
-  # user_data를 외부 파일로 관리
-  user_data = file("./script/combined_settings.sh")
+  # 시스템 설정 완료 대기
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file(var.private_key_path)
+      host        = self.public_ip
+      port        = 22
+      timeout     = "10m"
+    }
+
+    inline = [
+      "while [ ! -f /home/ubuntu/.system_settings_complete ]; do sleep 10; done",
+      "echo '시스템 설정 완료'"
+    ]
+  }
+
+  # 쿠버네티스 설치
+  provisioner "file" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file(var.private_key_path)
+      host        = self.public_ip
+      port        = 1717
+    }
+
+    source      = "./script/combined_settings.sh"
+    destination = "/home/ubuntu/combined_settings.sh"
+  }
+
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file(var.private_key_path)
+      host        = self.public_ip
+      port        = 1717
+    }
+
+    inline = [
+      "chmod +x /home/ubuntu/combined_settings.sh",
+      "export NODE_ROLE=master",
+      "sudo -E /home/ubuntu/combined_settings.sh",
+      "while [ ! -f /etc/kubernetes/admin.conf ]; do sleep 10; done",
+      "mkdir -p $HOME/.kube",
+      "sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config",
+      "sudo chown $(id -u):$(id -g) $HOME/.kube/config",
+      # Calico CNI 설치 명령
+      "kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/tigera-operator.yaml",
+      "kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/custom-resources.yaml",
+      # Join 토큰 생성
+      "sudo kubeadm token create --print-join-command > /home/ubuntu/join_command"
+    ]
+  }
 }
 
-# EBS 볼륨 생성 (스냅샷이 있으면 복원, 없으면 새로 생성)
+# 워커 노드 생성
+resource "aws_instance" "k8s_workers" {
+  count             = 2
+  ami               = var.ami_id
+  instance_type     = var.node_instance_type
+  availability_zone = var.availability_zone
+  key_name          = var.key_name
+
+  tags = {
+    Name = "k8s-worker-${count.index + 1}"
+    Role = "worker"
+  }
+
+  security_groups = [aws_security_group.k8s_sg.name]
+  user_data      = file("./script/system_settings.sh")
+
+  # 시스템 설정 완료 대기
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file(var.private_key_path)
+      host        = self.public_ip
+      port        = 22
+      timeout     = "10m"
+    }
+
+    inline = [
+      "while [ ! -f /home/ubuntu/.system_settings_complete ]; do sleep 10; done",
+      "echo '시스템 설정 완료'"
+    ]
+  }
+
+  # 쿠버네티스 설치 및 조인
+  provisioner "file" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file(var.private_key_path)
+      host        = self.public_ip
+      port        = 1717
+    }
+
+    source      = "./script/combined_settings.sh"
+    destination = "/home/ubuntu/combined_settings.sh"
+  }
+
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file(var.private_key_path)
+      host        = self.public_ip
+      port        = 1717
+    }
+
+    inline = [
+      "chmod +x /home/ubuntu/combined_settings.sh",
+      "export NODE_ROLE=worker",
+      "sudo -E /home/ubuntu/combined_settings.sh",
+      "until ssh -p 1717 -o StrictHostKeyChecking=no -i ${var.private_key_path} ubuntu@${aws_instance.k8s_master.private_ip} 'test -f /home/ubuntu/join_command'; do sleep 10; done",
+      "JOIN_CMD=$(ssh -p 1717 -o StrictHostKeyChecking=no -i ${var.private_key_path} ubuntu@${aws_instance.k8s_master.private_ip} 'cat /home/ubuntu/join_command')",
+      "sudo $JOIN_CMD"
+    ]
+  }
+
+  depends_on = [aws_instance.k8s_master]
+}
+
+# EBS 볼륨 생성
 resource "aws_ebs_volume" "k8s_volumes" {
   for_each = toset(["master", "node1", "node2"])
 
   availability_zone = var.availability_zone
-  size              = var.ebs_size
-
-  # 스냅샷이 있는 경우에만 복원, 없으면 null로 설정하여 새로 생성
-  snapshot_id = lookup(local.snapshot_ids, each.key, null)
+  size             = var.ebs_size
+  snapshot_id      = lookup(local.snapshot_ids, each.key, null)
 
   tags = {
     Name = "k8s-${each.key}-volume"
   }
 }
 
-# EBS 볼륨을 인스턴스에 연결
-resource "aws_volume_attachment" "k8s_attachments" {
-  for_each = toset(["master", "node1", "node2"])
-
+# 마스터 노드 EBS 볼륨 연결
+resource "aws_volume_attachment" "master_attachment" {
   device_name = "/dev/sdf"
-  volume_id   = aws_ebs_volume.k8s_volumes[each.key].id
-  instance_id = aws_instance.k8s_instances[each.key].id
+  volume_id   = aws_ebs_volume.k8s_volumes["master"].id
+  instance_id = aws_instance.k8s_master.id
 
-  # aws_instance.k8s_instances가 모두 생성된 후에만 EBS 볼륨을 연결하도록 의존성 추가
-  depends_on  = [aws_instance.k8s_instances]
+  depends_on = [aws_instance.k8s_master]
 }
 
-# 스냅샷 생성 (자동 백업) - 인스턴스와 볼륨이 연결된 후에만 생성
-resource "aws_ebs_snapshot" "k8s_snapshots" {
-  for_each = toset(["master", "node1", "node2"])
+# 워커 노드 EBS 볼륨 연결
+resource "aws_volume_attachment" "worker_attachments" {
+  count       = 2
+  device_name = "/dev/sdf"
+  volume_id   = aws_ebs_volume.k8s_volumes["node${count.index + 1}"].id
+  instance_id = aws_instance.k8s_workers[count.index].id
 
-  volume_id = aws_ebs_volume.k8s_volumes[each.key].id
+  depends_on = [aws_instance.k8s_workers]
+}
+
+# 마스터 노드 스냅샷
+resource "aws_ebs_snapshot" "master_snapshot" {
+  volume_id = aws_ebs_volume.k8s_volumes["master"].id
+  
   tags = {
-    Name = "k8s-${each.key}-snapshot"
+    Name = "k8s-master-snapshot"
   }
 
-  # 볼륨이 인스턴스에 연결된 후에만 스냅샷을 생성하도록 의존성 설정
-  depends_on = [aws_volume_attachment.k8s_attachments]
+  depends_on = [aws_volume_attachment.master_attachment]
 
-  # 인프라를 제거하기 전에 스냅샷을 생성
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# 워커 노드 스냅샷
+resource "aws_ebs_snapshot" "worker_snapshots" {
+  count     = 2
+  volume_id = aws_ebs_volume.k8s_volumes["node${count.index + 1}"].id
+  
+  tags = {
+    Name = "k8s-node${count.index + 1}-snapshot"
+  }
+
+  depends_on = [aws_volume_attachment.worker_attachments]
+
   lifecycle {
     create_before_destroy = true
   }
