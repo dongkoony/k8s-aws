@@ -22,7 +22,7 @@ To customize the script's behavior for your environment, adjust the following en
 ```bash
 # Log Settings
 LOG_FILE="/home/ubuntu/combined_settings.log"  # Log file location
-LOG_PREFIX="[K8S-SETUP]"                      # Log prefix
+LOG_PREFIX="[K8S-SETUP]"                       # Log prefix
 
 # Basic System Settings
 TIMEZONE="Asia/Seoul"                         # System timezone
@@ -34,8 +34,9 @@ SSH_CONFIG="/etc/ssh/sshd_config"             # SSH config file location
 ```bash
 # Network Settings
 POD_CIDR="10.244.0.0/16"                     # Pod network CIDR
-CNI_VERSION="v3.14"                          # Calico CNI version
-CNI_MANIFEST="https://docs.projectcalico.org/v3.14/manifests/calico.yaml"
+CNI_VERSION="v3.26.1"                        # Calico CNI version
+CNI_MANIFEST="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/tigera-operator.yaml"
+CNI_MANIFEST_CUSTOM="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/custom-resources.yaml"
 
 # Kubernetes Version
 K8S_VERSION="1.27.16-1.1"                    # Kubernetes version

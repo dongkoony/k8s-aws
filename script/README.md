@@ -22,7 +22,7 @@ AWS EC2 인스턴스(UBUNTU 22.04LTS)에 Kubernetes 1.27 클러스터를 자동�
 ```bash
 # 로그 설정
 LOG_FILE="/home/ubuntu/combined_settings.log"  # 로그 파일 위치
-LOG_PREFIX="[K8S-SETUP]"                      # 로그 접두사
+LOG_PREFIX="[K8S-SETUP]"                       # 로그 접두사
 
 # 기본 시스템 설정
 TIMEZONE="Asia/Seoul"                         # 시스템 시간대
@@ -34,8 +34,9 @@ SSH_CONFIG="/etc/ssh/sshd_config"             # SSH 설정 파일 위치
 ```bash
 # 네트워크 설정
 POD_CIDR="10.244.0.0/16"                     # Pod 네트워크 대역
-CNI_VERSION="v3.14"                          # Calico CNI 버전
-CNI_MANIFEST="https://docs.projectcalico.org/v3.14/manifests/calico.yaml"
+CNI_VERSION="v3.26.1"                        # Calico CNI 버전
+CNI_MANIFEST="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/tigera-operator.yaml"
+CNI_MANIFEST_CUSTOM="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/custom-resources.yaml"
 
 # 쿠버네티스 버전
 K8S_VERSION="1.27.16-1.1"                    # 쿠버네티스 버전
