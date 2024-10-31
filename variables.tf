@@ -27,3 +27,7 @@ variable "ebs_size" {
 variable "key_name" {
   description = "EC2 인스턴스에 사용할 SSH 키 페어 이름"
 }
+
+variable "private_key_path" {
+  description = "EC2 인스턴스에 사용할 SSH 키 경로"
+}
