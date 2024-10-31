@@ -10,7 +10,7 @@ readonly LOG_PREFIX="[K8S-SETUP]"
 
 # 네트워크 설정
 readonly POD_CIDR="10.244.0.0/16"
-readonly CNI_VERSION="v3.14"
+readonly CNI_VERSION="v3.26.1"
 readonly CNI_MANIFEST="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/tigera-operator.yaml"
 readonly CNI_MANIFEST_CUSTOM="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/custom-resources.yaml"
 
@@ -202,8 +202,8 @@ initialize_master() {
     chown $(id -u ubuntu):$(id -g ubuntu) /home/ubuntu/.kube/config
 
     # Calico CNI 설치
-    kubectl apply -f ${CNI_MANIFEST}
-    kubectl apply -f ${CNI_MANIFEST_CUSTOM}
+    kubectl apply --server-side --force-conflicts -f ${CNI_MANIFEST}
+    kubectl apply --server-side --force-conflicts -f ${CNI_MANIFEST_CUSTOM}
     check_error "Calico CNI 설치 실패"
 
     log "마스터 노드 초기화 완료"
