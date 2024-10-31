@@ -170,18 +170,12 @@ resource "aws_instance" "k8s_master" {
     }
 
     inline = [
-      "chmod +x /home/ubuntu/combined_settings.sh",
-      "export NODE_ROLE=master",
-      "sudo -E /home/ubuntu/combined_settings.sh",
-      "while [ ! -f /etc/kubernetes/admin.conf ]; do sleep 10; done",
-      "mkdir -p $HOME/.kube",
-      "sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config",
-      "sudo chown $(id -u):$(id -g) $HOME/.kube/config",
-      # Calico CNI 설치 명령
-      "kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/tigera-operator.yaml",
-      "kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/custom-resources.yaml",
-      # Join 토큰 생성
-      "sudo kubeadm token create --print-join-command > /home/ubuntu/join_command"
+        "chmod +x /home/ubuntu/combined_settings.sh",
+        "export NODE_ROLE=master",
+        "sudo -E /home/ubuntu/combined_settings.sh",
+        # combined_settings.sh의 실행이 완료될 때까지 대기
+        "while [ ! -f /home/ubuntu/.k8s_setup_complete ]; do sleep 10; done",
+        "echo 'Kubernetes setup completed'"
     ]
   }
 }
@@ -209,8 +203,7 @@ resource "aws_instance" "k8s_workers" {
       user        = "ubuntu"
       private_key = file(var.private_key_path)
       host        = self.public_ip
-      port        = 22
-      timeout     = "10m"
+      port        = 1717
     }
 
     inline = [
