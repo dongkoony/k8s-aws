@@ -8,15 +8,11 @@
 readonly LOG_FILE="/home/ubuntu/combined_settings.log"
 readonly LOG_PREFIX="[K8S-SETUP]"
 
-# 시스템 설정
-readonly TIMEZONE="Asia/Seoul"
-readonly SSH_PORT="1717"
-readonly SSH_CONFIG="/etc/ssh/sshd_config"
-
 # 네트워크 설정
 readonly POD_CIDR="10.244.0.0/16"
 readonly CNI_VERSION="v3.14"
-readonly CNI_MANIFEST="https://docs.projectcalico.org/v3.14/manifests/calico.yaml"
+readonly CNI_MANIFEST="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/tigera-operator.yaml"
+readonly CNI_MANIFEST_CUSTOM="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/custom-resources.yaml"
 
 # 쿠버네티스 설정
 readonly K8S_VERSION="1.27.16-1.1"
@@ -98,29 +94,7 @@ verify_system_requirements() {
     return 0
 }
 
-#################################################################
-# ---------------- 시스템 설정 섹션 ------------------
-#################################################################
 
-setup_system() {
-    log "시스템 기본 설정 시작"
-
-    # 시간대 설정
-    timedatectl set-timezone ${TIMEZONE}
-    check_error "시간대 설정 실패"
-
-    # SSH 포트 변경
-    sed -i "s/#Port 22/Port ${SSH_PORT}/g" ${SSH_CONFIG}
-    systemctl restart sshd
-    check_error "SSH 설정 변경 실패"
-
-    # Swap 비활성화
-    swapoff -a
-    sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
-    check_error "Swap 비활성화 실패"
-
-    log "시스템 기본 설정 완료"
-}
 
 #################################################################
 # ---------------- 네트워크 설정 섹션 ------------------
@@ -229,6 +203,7 @@ initialize_master() {
 
     # Calico CNI 설치
     kubectl apply -f ${CNI_MANIFEST}
+    kubectl apply -f ${CNI_MANIFEST_CUSTOM}
     check_error "Calico CNI 설치 실패"
 
     log "마스터 노드 초기화 완료"
