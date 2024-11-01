@@ -10,17 +10,27 @@ readonly LOG_PREFIX="[K8S-SETUP]"
 
 # 네트워크 설정
 readonly POD_CIDR="10.244.0.0/16"
-readonly CNI_VERSION="v3.26.1"
-readonly CNI_MANIFEST="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/tigera-operator.yaml"
-readonly CNI_MANIFEST_CUSTOM="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/custom-resources.yaml"
+readonly CNI_VERSION="v3.28.0"
+readonly CNI_MANIFEST="https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml"
+readonly CNI_MANIFEST_CUSTOM="https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml"
 
 # 쿠버네티스 설정
+
+# 쿠버네티스 v1.27 
 readonly K8S_VERSION="1.27.16-1.1"
+# 쿠버네티스 v1.31
+# readonly K8S_VERSION="1.31.0-1.1"
+
 readonly PACKAGES=(
     "kubelet=${K8S_VERSION}"
     "kubeadm=${K8S_VERSION}"
     "kubectl=${K8S_VERSION}"
 )
+
+# 쿠버네티스 v1.27 
+readonly K8S_INSTALL_VERSION="https://pkgs.k8s.io/core:/stable:/v1.27/deb/"
+# 쿠버네티스 v1.31
+# readonly K8S_INSTALL_VERSION="https://pkgs.k8s.io/core:/stable:/v1.31/deb/"
 
 # 시스템 요구사항
 readonly MIN_CPU_CORES=2
@@ -155,8 +165,8 @@ install_kubernetes() {
     log "쿠버네티스 설치 시작"
 
     # 저장소 설정
-    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.27/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.27/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
+    curl -fsSL ${K8S_INSTALL_VERSION}Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] "${K8S_INSTALL_VERSION}" /" > /etc/apt/sources.list.d/kubernetes.list
 
     # 패키지 설치
     apt-get update
@@ -201,9 +211,16 @@ initialize_master() {
     cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
     chown $(id -u ubuntu):$(id -g ubuntu) /home/ubuntu/.kube/config
 
+
     # Calico CNI 설치
-    kubectl apply --server-side --force-conflicts -f ${CNI_MANIFEST}
-    kubectl apply --server-side --force-conflicts -f ${CNI_MANIFEST_CUSTOM}
+    mkdir -p ~/calico && cd ~/calico
+    curl -LO ${CNI_MANIFEST}
+    kubectl create -f tigera-operator.yaml
+    # kubectl apply --server-side --force-conflicts -f ${CNI_MANIFEST}
+    curl -LO ${CNI_MANIFEST_CUSTOM}
+    # kubectl apply --server-side --force-conflicts -f ${CNI_MANIFEST_CUSTOM}
+    kubectl create -f custom-resources.yaml
+
     check_error "Calico CNI 설치 실패"
 
     log "마스터 노드 초기화 완료"
