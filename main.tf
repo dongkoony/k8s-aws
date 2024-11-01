@@ -174,7 +174,7 @@ resource "aws_instance" "k8s_master" {
         "export NODE_ROLE=master",
         "sudo -E /home/ubuntu/combined_settings.sh",
         # combined_settings.sh의 실행이 완료될 때까지 대기
-        "while [ ! -f /home/ubuntu/.k8s_setup_complete ]; do sleep 10; done",
+        # "while [ ! -f /home/ubuntu/.k8s_setup_complete ]; do sleep 10; done",
         "echo 'Kubernetes setup completed'"
     ]
   }
