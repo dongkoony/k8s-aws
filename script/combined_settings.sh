@@ -7,19 +7,32 @@
 # 로그 설정
 readonly LOG_FILE="/home/ubuntu/combined_settings.log"
 readonly LOG_PREFIX="[K8S-SETUP]"
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# AWS EC2 메타데이터
+readonly EC2_METADATA_URL="http://169.254.169.254/latest/meta-data"
+readonly EC2_LOCAL_IP=$(curl -s ${EC2_METADATA_URL}/local-ipv4)
+readonly EC2_PUBLIC_IP=$(curl -s ${EC2_METADATA_URL}/public-ipv4)
 
 # 네트워크 설정
 readonly POD_CIDR="10.244.0.0/16"
+readonly SERVICE_CIDR="10.96.0.0/12"
+readonly DNS_DOMAIN="cluster.local"
 readonly CNI_VERSION="v3.28.0"
-readonly CNI_MANIFEST="https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/tigera-operator.yaml"
-readonly CNI_MANIFEST_CUSTOM="https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/custom-resources.yaml"
+readonly CNI_MANIFEST="https://raw.githubusercontent.com/projectcalico/calico/${CNI_VERSION}/manifests/tigera-operator.yaml"
+readonly CNI_MANIFEST_CUSTOM="https://raw.githubusercontent.com/projectcalico/calico/${CNI_VERSION}/manifests/custom-resources.yaml"
+
+# containerd 설정
+readonly CONTAINERD_CONFIG="/etc/containerd/config.toml"
+readonly CONTAINERD_CONFIG_DIR="/etc/containerd"
 
 # 쿠버네티스 설정
-
-# 쿠버네티스 v1.27 
-readonly K8S_VERSION="1.27.16-1.1"
-# 쿠버네티스 v1.31
-# readonly K8S_VERSION="1.31.0-1.1"
+readonly K8S_VERSION="1.31.0-1.1"
+readonly K8S_REPO="https://pkgs.k8s.io/core:/stable:/v1.31/deb/"
+readonly K8S_KEYRING="/etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+readonly K8S_APT_SOURCE="/etc/apt/sources.list.d/kubernetes.list"
+readonly K8S_CONFIG_DIR="/etc/kubernetes"
+readonly KUBECONFIG="/home/ubuntu/.kube/config"
 
 readonly PACKAGES=(
     "kubelet=${K8S_VERSION}"
@@ -27,15 +40,22 @@ readonly PACKAGES=(
     "kubectl=${K8S_VERSION}"
 )
 
-# 쿠버네티스 v1.27 
-readonly K8S_INSTALL_VERSION="https://pkgs.k8s.io/core:/stable:/v1.27/deb/"
-# 쿠버네티스 v1.31
-# readonly K8S_INSTALL_VERSION="https://pkgs.k8s.io/core:/stable:/v1.31/deb/"
+# 커널 모듈 설정
+readonly KERNEL_MODULES=(
+    "overlay"
+    "br_netfilter"
+)
+
+readonly SYSCTL_SETTINGS=(
+    "net.bridge.bridge-nf-call-iptables=1"
+    "net.bridge.bridge-nf-call-ip6tables=1"
+    "net.ipv4.ip_forward=1"
+)
 
 # 시스템 요구사항
 readonly MIN_CPU_CORES=2
 readonly MIN_MEMORY_GB=2
-readonly REQUIRED_PORTS=(6443 10250 10251 10252)
+readonly REQUIRED_PORTS=(6443 10250 10251 10252 2379 2380)
 
 # 재시도 설정
 readonly MAX_RETRIES=3
@@ -104,8 +124,6 @@ verify_system_requirements() {
     return 0
 }
 
-
-
 #################################################################
 # ---------------- 네트워크 설정 섹션 ------------------
 #################################################################
@@ -113,19 +131,16 @@ verify_system_requirements() {
 setup_network() {
     log "네트워크 설정 시작"
 
-    # 커널 모듈 설정
-    local modules=(overlay br_netfilter)
-    for module in "${modules[@]}"; do
-        modprobe ${module}
-        echo ${module} >> /etc/modules-load.d/k8s.conf
+    # 커널 모듈 로드
+    for module in "${KERNEL_MODULES[@]}"; do
+        modprobe "${module}"
+        echo "${module}" >> /etc/modules-load.d/k8s.conf
     done
 
-    # sysctl 파라미터 설정
-    cat > /etc/sysctl.d/k8s.conf <<EOF
-net.bridge.bridge-nf-call-iptables  = 1
-net.bridge.bridge-nf-call-ip6tables = 1
-net.ipv4.ip_forward                 = 1
-EOF
+    # sysctl 설정
+    for setting in "${SYSCTL_SETTINGS[@]}"; do
+        echo "${setting}" >> /etc/sysctl.d/k8s.conf
+    done
     sysctl --system
     check_error "네트워크 설정 실패"
 
@@ -133,11 +148,11 @@ EOF
 }
 
 #################################################################
-# ---------------- Docker 설치 섹션 ------------------
+# ---------------- Docker 및 Containerd 설치 섹션 ------------------
 #################################################################
 
 install_docker() {
-    log "Docker 설치 시작"
+    log "Docker 및 Containerd 설치 시작"
     
     apt-get update -y
     apt-get install -y docker.io
@@ -146,15 +161,14 @@ install_docker() {
     systemctl enable --now docker
     check_error "Docker 서비스 활성화 실패"
 
-    # containerd 설치 및 설정
-    apt install -y containerd
-    mkdir -p /etc/containerd
-    containerd config default | tee /etc/containerd/config.toml
-    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+    # containerd 설정
+    mkdir -p ${CONTAINERD_CONFIG_DIR}
+    containerd config default | tee ${CONTAINERD_CONFIG}
+    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' ${CONTAINERD_CONFIG}
     systemctl restart containerd
     check_error "containerd 설정 실패"
 
-    log "Docker 설치 완료"
+    log "Docker 및 Containerd 설치 완료"
 }
 
 #################################################################
@@ -165,8 +179,9 @@ install_kubernetes() {
     log "쿠버네티스 설치 시작"
 
     # 저장소 설정
-    curl -fsSL ${K8S_INSTALL_VERSION}Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-    echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] "${K8S_INSTALL_VERSION}" /" > /etc/apt/sources.list.d/kubernetes.list
+    mkdir -p $(dirname ${K8S_KEYRING})
+    curl -fsSL ${K8S_REPO}/Release.key | sudo gpg --dearmor -o ${K8S_KEYRING}
+    echo "deb [signed-by=${K8S_KEYRING}] ${K8S_REPO} /" | sudo tee ${K8S_APT_SOURCE}
 
     # 패키지 설치
     apt-get update
@@ -187,12 +202,28 @@ install_kubernetes() {
 initialize_master() {
     log "마스터 노드 초기화 시작"
 
-    local master_ip=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-    check_error "마스터 IP 조회 실패"
+    # kubeadm 설정 생성
+    cat > /tmp/kubeadm-config.yaml <<EOF
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: ${EC2_LOCAL_IP}
+  bindPort: 6443
+nodeRegistration:
+  criSocket: unix:///var/run/containerd/containerd.sock
+---
+apiVersion: kubeadm.k8s.io/v1beta3
+kind: ClusterConfiguration
+networking:
+  serviceSubnet: ${SERVICE_CIDR}
+  podSubnet: ${POD_CIDR}
+  dnsDomain: ${DNS_DOMAIN}
+EOF
 
+    # 마스터 노드 초기화
     local retry_count=0
     while [ ${retry_count} -lt ${MAX_RETRIES} ]; do
-        if kubeadm init --apiserver-advertise-address=${master_ip} --pod-network-cidr=${POD_CIDR} > /var/log/kubeadm_init.log 2>&1; then
+        if kubeadm init --config=/tmp/kubeadm-config.yaml --upload-certs > /var/log/kubeadm_init.log 2>&1; then
             log "마스터 노드 초기화 성공"
             break
         fi
@@ -201,29 +232,42 @@ initialize_master() {
         sleep ${RETRY_INTERVAL}
     done
 
-    if [ ${retry_count} -eq ${MAX_RETRIES} ]; then
-        log "마스터 노드 초기화 최대 시도 횟수 초과"
-        exit 1
-    fi
-
     # kubeconfig 설정
-    mkdir -p /home/ubuntu/.kube
-    cp -i /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
-    chown $(id -u ubuntu):$(id -g ubuntu) /home/ubuntu/.kube/config
+    mkdir -p $(dirname ${KUBECONFIG})
+    cp -i ${K8S_CONFIG_DIR}/admin.conf ${KUBECONFIG}
+    chown $(id -u ubuntu):$(id -g ubuntu) ${KUBECONFIG}
 
+    install_cni
+    log "마스터 노드 초기화 완료"
+}
 
-    # Calico CNI 설치
+#################################################################
+# ---------------- CNI 설치 섹션 ------------------
+#################################################################
+
+install_cni() {
+    log "Calico CNI 설치 시작"
+
     mkdir -p ~/calico && cd ~/calico
     curl -LO ${CNI_MANIFEST}
     kubectl create -f tigera-operator.yaml
-    # kubectl apply --server-side --force-conflicts -f ${CNI_MANIFEST}
     curl -LO ${CNI_MANIFEST_CUSTOM}
-    # kubectl apply --server-side --force-conflicts -f ${CNI_MANIFEST_CUSTOM}
     kubectl create -f custom-resources.yaml
 
-    check_error "Calico CNI 설치 실패"
+    # CNI 설치 확인
+    local retry_count=0
+    while [ ${retry_count} -lt ${MAX_RETRIES} ]; do
+        if kubectl get pods -n calico-system | grep -q "Running"; then
+            log "Calico CNI 설치 완료"
+            return 0
+        fi
+        retry_count=$((retry_count + 1))
+        log "CNI 설치 확인 중... (${retry_count}/${MAX_RETRIES})"
+        sleep ${WAIT_INTERVAL}
+    done
 
-    log "마스터 노드 초기화 완료"
+    log "Calico CNI 설치 실패"
+    return 1
 }
 
 #################################################################
@@ -240,7 +284,7 @@ generate_join_command() {
     # HTTP 서버 시작
     cd /home/ubuntu
     nohup python3 -m http.server 8080 >> "${LOG_FILE}" 2>&1 &
-    sleep 30  # HTTP 서버 시작 대기
+    sleep 30
 
     log "Join 명령어 생성 완료"
 }
@@ -253,7 +297,6 @@ main() {
     log "설치 스크립트 시작"
 
     verify_system_requirements
-    setup_system
     setup_network
     install_docker
     install_kubernetes
