@@ -5,6 +5,7 @@ provider "aws" {
 # Security Group 설정
 resource "aws_security_group" "k8s_sg" {
   name        = "k8s-security-group"
+  vpc_id      = aws_vpc.k8s_vpc.id
   description = "Security group for Kubernetes master and nodes"
 
   # 초기 SSH 연결용 22번 포트
@@ -54,6 +55,23 @@ resource "aws_security_group" "k8s_sg" {
     protocol    = "tcp"
     self        = true
     description = "Calico BGP"
+  }
+
+  # 쿠버네티스 내부 통신을 위한 규칙
+  ingress {
+    from_port = 0
+    to_port   = 65535
+    protocol  = "tcp"
+    self      = true
+    description = "Allow internal kubernetes traffic"
+  }
+
+  ingress {
+    from_port = 0
+    to_port   = 65535
+    protocol  = "udp"
+    self      = true
+    description = "Allow internal kubernetes traffic"
   }
 
   # 내부 통신
@@ -106,19 +124,15 @@ data "aws_ebs_snapshot" "node2_snapshot" {
   }
 }
 
-locals {
-  snapshot_ids = {
-    master = length(data.aws_ebs_snapshot.master_snapshot) > 0 ? data.aws_ebs_snapshot.master_snapshot[0].id : null,
-    node1  = length(data.aws_ebs_snapshot.node1_snapshot) > 0 ? data.aws_ebs_snapshot.node1_snapshot[0].id : null,
-    node2  = length(data.aws_ebs_snapshot.node2_snapshot) > 0 ? data.aws_ebs_snapshot.node2_snapshot[0].id : null
-  }
-}
+
 
 # 마스터 노드 생성
 resource "aws_instance" "k8s_master" {
   ami               = var.ami_id
   instance_type     = var.master_instance_type
   availability_zone = var.availability_zone
+  subnet_id         = aws_subnet.public_subnet.id
+  vpc_security_group_ids = [aws_security_group.k8s_sg.id]
   key_name          = var.key_name
 
   tags = {
@@ -126,7 +140,7 @@ resource "aws_instance" "k8s_master" {
     Role = "master"
   }
 
-  security_groups = [aws_security_group.k8s_sg.name]
+  # security_groups = [aws_security_group.k8s_sg.name]
   user_data      = file("./script/system_settings.sh")
 
   # 시스템 설정 완료 대기
@@ -136,7 +150,7 @@ resource "aws_instance" "k8s_master" {
       user        = "ubuntu"
       private_key = file(var.private_key_path)
       host        = self.public_ip
-      port        = 22
+      port        = 1717
       timeout     = "10m"
     }
 
@@ -182,28 +196,33 @@ resource "aws_instance" "k8s_master" {
 
 # 워커 노드 생성
 resource "aws_instance" "k8s_workers" {
-  count             = 2
-  ami               = var.ami_id
-  instance_type     = var.node_instance_type
-  availability_zone = var.availability_zone
-  key_name          = var.key_name
+  count                = 2
+  ami                  = var.ami_id
+  instance_type        = var.node_instance_type
+  availability_zone    = var.availability_zone
+  subnet_id            = aws_subnet.private_subnet.id
+  vpc_security_group_ids = [aws_security_group.k8s_sg.id]
+  key_name            = var.key_name
 
   tags = {
     Name = "k8s-worker-${count.index + 1}"
     Role = "worker"
   }
 
-  security_groups = [aws_security_group.k8s_sg.name]
-  user_data      = file("./script/system_settings.sh")
+  user_data = file("./script/system_settings.sh")
 
   # 시스템 설정 완료 대기
   provisioner "remote-exec" {
     connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file(var.private_key_path)
-      host        = self.public_ip
-      port        = 1717
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = file(var.private_key_path)
+      host                = self.private_ip
+      port                = 1717
+      bastion_host        = aws_instance.k8s_master.public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = file(var.private_key_path)
+      bastion_port        = 1717
     }
 
     inline = [
@@ -212,35 +231,64 @@ resource "aws_instance" "k8s_workers" {
     ]
   }
 
-  # 쿠버네티스 설치 및 조인
+  # SSH 키 파일 복사 및 쿠버네티스 설치 스크립트 전송
   provisioner "file" {
     connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file(var.private_key_path)
-      host        = self.public_ip
-      port        = 1717
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = file(var.private_key_path)
+      host                = self.private_ip
+      port                = 1717
+      bastion_host        = aws_instance.k8s_master.public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = file(var.private_key_path)
+      bastion_port        = 1717
+    }
+
+    source      = var.private_key_path
+    destination = "/home/ubuntu/${var.key_name}"
+  }
+
+  # 쿠버네티스 설치 스크립트 전송
+  provisioner "file" {
+    connection {
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = file(var.private_key_path)
+      host                = self.private_ip
+      port                = 1717
+      bastion_host        = aws_instance.k8s_master.public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = file(var.private_key_path)
+      bastion_port        = 1717
     }
 
     source      = "./script/combined_settings.sh"
     destination = "/home/ubuntu/combined_settings.sh"
   }
 
+  # 쿠버네티스 설치 및 클러스터 조인
   provisioner "remote-exec" {
     connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file(var.private_key_path)
-      host        = self.public_ip
-      port        = 1717
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = file(var.private_key_path)
+      host                = self.private_ip
+      port                = 1717
+      bastion_host        = aws_instance.k8s_master.public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = file(var.private_key_path)
+      bastion_port        = 1717
     }
 
     inline = [
+      "chmod 400 /home/ubuntu/${var.key_name}",
       "chmod +x /home/ubuntu/combined_settings.sh",
       "export NODE_ROLE=worker",
+      "export MASTER_PRIVATE_IP=${aws_instance.k8s_master.private_ip}",
       "sudo -E /home/ubuntu/combined_settings.sh",
-      "until ssh -p 1717 -o StrictHostKeyChecking=no -i ${var.private_key_path} ubuntu@${aws_instance.k8s_master.private_ip} 'test -f /home/ubuntu/join_command'; do sleep 10; done",
-      "JOIN_CMD=$(ssh -p 1717 -o StrictHostKeyChecking=no -i ${var.private_key_path} ubuntu@${aws_instance.k8s_master.private_ip} 'cat /home/ubuntu/join_command')",
+      "until ssh -p 1717 -o StrictHostKeyChecking=no -i /home/ubuntu/${var.key_name} -J ubuntu@${aws_instance.k8s_master.public_ip} ubuntu@${aws_instance.k8s_master.private_ip} 'test -f /home/ubuntu/join_command'; do sleep 10; done",
+      "JOIN_CMD=$(ssh -p 1717 -o StrictHostKeyChecking=no -i /home/ubuntu/${var.key_name} -J ubuntu@${aws_instance.k8s_master.public_ip} ubuntu@${aws_instance.k8s_master.private_ip} 'cat /home/ubuntu/join_command')",
       "sudo $JOIN_CMD"
     ]
   }
