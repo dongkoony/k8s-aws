@@ -245,28 +245,121 @@ EOF
 # ---------------- CNI 설치 섹션 ------------------
 #################################################################
 
+# CNI 디버깅 정보 수집
+debug_cni() {
+    log "CNI 디버깅 정보 수집"
+    kubectl get pods -A
+    kubectl get nodes -o wide
+    kubectl describe nodes
+    kubectl logs -n tigera-operator -l k8s-app=tigera-operator
+    kubectl get installation -o yaml
+}
+
+# CNI 설치 검증
+verify_cni() {
+    log "CNI 설치 검증 시작"
+    
+    # calico-system 네임스페이스 생성 대기
+    for i in $(seq 1 30); do
+        if kubectl get ns calico-system >/dev/null 2>&1; then
+            break
+        fi
+        log "calico-system 네임스페이스 대기 중... ${i}/30"
+        sleep 10
+    done
+    
+    # Pod 생성 대기
+    if ! kubectl wait --for=condition=Ready pods --all -n calico-system --timeout=300s; then
+        log "CNI POD 상태 확인"
+        kubectl get pods -n calico-system
+        kubectl describe pods -n calico-system
+        log "CNI POD가 정상적으로 실행되지 않았습니다"
+        return 1
+    fi
+    
+    # 노드 네트워크 상태 확인
+    if ! kubectl get nodes -o wide | grep -q "Ready"; then
+        log "노드 네트워크 상태가 비정상입니다"
+        kubectl describe nodes
+        return 1
+    fi
+    
+    log "CNI 설치 검증 완료"
+    return 0
+}
+
+# CNI 롤백
+rollback_cni() {
+    log "CNI 설치 롤백 시작"
+    kubectl delete -f custom-resources.yaml >/dev/null 2>&1 || true
+    kubectl delete -f tigera-operator.yaml >/dev/null 2>&1 || true
+    
+    # 네임스페이스 삭제 확인
+    for i in $(seq 1 10); do
+        if ! kubectl get ns calico-system >/dev/null 2>&1; then
+            break
+        fi
+        log "calico-system 네임스페이스 삭제 대기 중... ${i}/10"
+        sleep 5
+    done
+    
+    log "CNI 설치 롤백 완료"
+}
+
+# CNI 설치
 install_cni() {
     log "Calico CNI 설치 시작"
 
+    # 기존 CNI 설정 제거
+    rollback_cni
+
+    # 작업 디렉토리 생성
     mkdir -p ~/calico && cd ~/calico
+
+    # Tigera Operator 설치
+    log "Tigera Operator 설치"
     curl -LO ${CNI_MANIFEST}
     kubectl create -f tigera-operator.yaml
+
+    # Operator 설치 대기
+    log "Tigera Operator 초기화 대기 중..."
+    sleep 20
+
+    # Custom Resources 설치
+    log "Calico Custom Resources 설치"
     curl -LO ${CNI_MANIFEST_CUSTOM}
+    sed -i "s|cidr: .*|cidr: ${POD_CIDR}|g" custom-resources.yaml
     kubectl create -f custom-resources.yaml
+
+    # 설치 후 초기화 대기
+    log "Calico 구성요소 초기화 대기 중..."
+    sleep 30
 
     # CNI 설치 확인
     local retry_count=0
     while [ ${retry_count} -lt ${MAX_RETRIES} ]; do
-        if kubectl get pods -n calico-system | grep -q "Running"; then
-            log "Calico CNI 설치 완료"
+        log "CNI 설치 상태 확인... (${retry_count}/${MAX_RETRIES})"
+        
+        # 현재 상태 출력
+        kubectl get pods -A | grep -E "calico-system|tigera-operator"
+        
+        if verify_cni; then
+            log "Calico CNI 설치 및 검증 완료"
             return 0
         fi
+        
         retry_count=$((retry_count + 1))
-        log "CNI 설치 확인 중... (${retry_count}/${MAX_RETRIES})"
+        
+        if [ ${retry_count} -eq ${MAX_RETRIES} ]; then
+            log "설치 실패 - 디버깅 정보 수집"
+            debug_cni
+        fi
+        
         sleep ${WAIT_INTERVAL}
     done
 
     log "Calico CNI 설치 실패"
+    rollback_cni
     return 1
 }
 
