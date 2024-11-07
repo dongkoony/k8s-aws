@@ -9,17 +9,17 @@ resource "aws_security_group" "k8s_sg" {
   description = "Security group for Kubernetes master and nodes"
 
   # 초기 SSH 연결용 22번 포트
+  # ingress {
+  #   from_port   = 22
+  #   to_port     = 22
+  #   protocol    = "tcp"
+  #   cidr_blocks = ["0.0.0.0/0"]
+  # }
+
+  # 변경된 SSH 포트 22
   ingress {
     from_port   = 22
     to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # 변경된 SSH 포트 1717
-  ingress {
-    from_port   = 1717
-    to_port     = 1717
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -150,7 +150,7 @@ resource "aws_instance" "k8s_master" {
       user        = "ubuntu"
       private_key = file(var.private_key_path)
       host        = self.public_ip
-      port        = 1717
+      port        = 22
       timeout     = "10m"
     }
 
@@ -167,7 +167,7 @@ resource "aws_instance" "k8s_master" {
       user        = "ubuntu"
       private_key = file(var.private_key_path)
       host        = self.public_ip
-      port        = 1717
+      port        = 22
     }
 
     source      = "./script/combined_settings.sh"
@@ -180,7 +180,7 @@ resource "aws_instance" "k8s_master" {
       user        = "ubuntu"
       private_key = file(var.private_key_path)
       host        = self.public_ip
-      port        = 1717
+      port        = 22
     }
 
     inline = [
@@ -196,7 +196,7 @@ resource "aws_instance" "k8s_master" {
 
 # 워커 노드 생성
 resource "aws_instance" "k8s_workers" {
-  count                = 2
+  count                = var.worker_instance_count
   ami                  = var.ami_id
   instance_type        = var.node_instance_type
   availability_zone    = var.availability_zone
@@ -218,11 +218,11 @@ resource "aws_instance" "k8s_workers" {
       user                = "ubuntu"
       private_key         = file(var.private_key_path)
       host                = self.private_ip
-      port                = 1717
+      port                = 22
       bastion_host        = aws_instance.k8s_master.public_ip
       bastion_user        = "ubuntu"
       bastion_private_key = file(var.private_key_path)
-      bastion_port        = 1717
+      bastion_port        = 22
     }
 
     inline = [
@@ -238,11 +238,11 @@ resource "aws_instance" "k8s_workers" {
       user                = "ubuntu"
       private_key         = file(var.private_key_path)
       host                = self.private_ip
-      port                = 1717
+      port                = 22
       bastion_host        = aws_instance.k8s_master.public_ip
       bastion_user        = "ubuntu"
       bastion_private_key = file(var.private_key_path)
-      bastion_port        = 1717
+      bastion_port        = 22
     }
 
     source      = var.private_key_path
@@ -256,11 +256,11 @@ resource "aws_instance" "k8s_workers" {
       user                = "ubuntu"
       private_key         = file(var.private_key_path)
       host                = self.private_ip
-      port                = 1717
+      port                = 22
       bastion_host        = aws_instance.k8s_master.public_ip
       bastion_user        = "ubuntu"
       bastion_private_key = file(var.private_key_path)
-      bastion_port        = 1717
+      bastion_port        = 22
     }
 
     source      = "./script/combined_settings.sh"
@@ -274,11 +274,11 @@ resource "aws_instance" "k8s_workers" {
       user                = "ubuntu"
       private_key         = file(var.private_key_path)
       host                = self.private_ip
-      port                = 1717
+      port                = 22
       bastion_host        = aws_instance.k8s_master.public_ip
       bastion_user        = "ubuntu"
       bastion_private_key = file(var.private_key_path)
-      bastion_port        = 1717
+      bastion_port        = 22
     }
 
     inline = [
@@ -287,8 +287,18 @@ resource "aws_instance" "k8s_workers" {
       "export NODE_ROLE=worker",
       "export MASTER_PRIVATE_IP=${aws_instance.k8s_master.private_ip}",
       "sudo -E /home/ubuntu/combined_settings.sh",
-      "until ssh -p 1717 -o StrictHostKeyChecking=no -i /home/ubuntu/${var.key_name} -J ubuntu@${aws_instance.k8s_master.public_ip} ubuntu@${aws_instance.k8s_master.private_ip} 'test -f /home/ubuntu/join_command'; do sleep 10; done",
-      "JOIN_CMD=$(ssh -p 1717 -o StrictHostKeyChecking=no -i /home/ubuntu/${var.key_name} -J ubuntu@${aws_instance.k8s_master.public_ip} ubuntu@${aws_instance.k8s_master.private_ip} 'cat /home/ubuntu/join_command')",
+      # SSH 설정 디렉토리 및 파일 생성
+      "mkdir -p ~/.ssh",
+      "touch ~/.ssh/known_hosts",
+      # 호스트 키 검증 비활성화 설정 추가
+      "echo 'StrictHostKeyChecking no' > ~/.ssh/config",
+      "chmod 600 ~/.ssh/config",
+      # 마스터 노드의 호스트 키 미리 추가 (both public and private IPs)
+      "ssh-keyscan -p 22 ${aws_instance.k8s_master.public_ip} 2>/dev/null >> ~/.ssh/known_hosts",
+      "ssh-keyscan -p 22 ${aws_instance.k8s_master.private_ip} 2>/dev/null >> ~/.ssh/known_hosts",
+      # join 명령어 대기 및 실행
+      "until ssh -p 22 -i /home/ubuntu/${var.key_name} -J ubuntu@${aws_instance.k8s_master.public_ip} ubuntu@${aws_instance.k8s_master.private_ip} 'test -f /home/ubuntu/join_command'; do sleep 10; done",
+      "JOIN_CMD=$(ssh -p 22 -i /home/ubuntu/${var.key_name} -J ubuntu@${aws_instance.k8s_master.public_ip} ubuntu@${aws_instance.k8s_master.private_ip} 'cat /home/ubuntu/join_command')",
       "sudo $JOIN_CMD"
     ]
   }
