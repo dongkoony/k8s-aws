@@ -16,6 +16,10 @@ variable "node_instance_type" {
   description = "k8s-node 인스턴스 타입"
 }
 
+variable "worker_instance_count" {
+  description = "Worker_Instance_갯수"
+}
+
 variable "ami_id" {
   description = "사용할 AMI ID (Ubuntu 22.04 LTS)"
 }
