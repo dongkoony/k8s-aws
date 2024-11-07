@@ -6,7 +6,7 @@
 
 # 시스템 설정
 TIMEZONE="Asia/Seoul"
-SSH_PORT="1717"
+SSH_PORT="22"
 SSH_CONFIG="/etc/ssh/sshd_config"
 
 # 로그 설정
