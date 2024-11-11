@@ -46,7 +46,12 @@ check_error "시간대 설정 실패"
 # SSH 포트 변경
 log "SSH 포트 변경 중..."
 sed -i "s/#Port 22/Port ${SSH_PORT}/g" ${SSH_CONFIG}
-systemctl restart sshd
+# hosts.allow 설정
+sudo sh -c 'echo \"sshd: 10.0.0.0/16\" >> /etc/hosts.allow'
+# hosts.deny 설정
+sudo sh -c 'echo \"sshd: ALL\" >> /etc/hosts.deny'
+# sshd 재시작
+sudo systemctl restart sshd
 check_error "SSH 설정 변경 실패"
 
 # Swap 비활성화
@@ -62,6 +67,8 @@ ufw allow 6443/tcp  # Kubernetes API Server
 ufw allow 10250/tcp # Kubelet API
 ufw allow 10251/tcp # kube-scheduler
 ufw allow 10252/tcp # kube-controller-manager
+ufw allow 65535/tcp
+ufw allow 65535/udp
 
 log "시스템 기본 설정 완료"
 
