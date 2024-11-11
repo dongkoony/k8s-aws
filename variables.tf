@@ -24,8 +24,12 @@ variable "ami_id" {
   description = "사용할 AMI ID (Ubuntu 22.04 LTS)"
 }
 
-variable "ebs_size" {
-  description = "EBS 볼륨 크기 (GB)"
+variable "volume_size" {
+  description = "Root 볼륨 크기 (GB)"
+}
+
+variable "volume_type" {
+  description = "Root 볼륨 타입"
 }
 
 variable "key_name" {
