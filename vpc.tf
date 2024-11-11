@@ -1,3 +1,5 @@
+# ./vpc.tf
+
 # VPC 생성
 resource "aws_vpc" "k8s_vpc" {
   cidr_block           = "10.0.0.0/16"
