@@ -11,7 +11,7 @@ node_instance_type   = "YOUR-WORKER-TYPE"           # 워커 노드 인스턴스
 worker_instance_count= "YOUR-WORKER-COUNT"          # 워커 노드 수 / Number of worker nodes. 예/ex: 2
 volume_size          = "YOUR-VOLUME-SIZE"           # 루트 볼륨 크기(GB) / Root volume size(GB). 예/ex: 30
 volume_type          = "YOUR-VOLUME-TYPE"           # 볼륨 타입 / Volume type. 예/ex: gp3
-key_name             = "YOUR-KEY-NAME"              # SSH 키 페어 이름 / SSH key pair name
+key_name             = "YOUR-KEY-NAME"              # SSH 키 페어 이름 / SSH key pair name 예/ex: your-key-name
 private_key_path     = "YOUR-KEY-PATH"              # 프라이빗 키 경로 / Private key path. 예/ex: /home/ubuntu/your-key.pem
 private_key_name     = "YOUR-KEY-FILE-NAME"         # 프라이빗 키 파일명 / Private key filename. 예/ex: your-key.pem
 

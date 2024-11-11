@@ -57,7 +57,21 @@ cd k8s-aws
 ```
 
 ### 3. 변수 설정 파일 수정
-[`terraform.tfvars`](terraform.tfvars) 파일을 환경에 맞게 수정합니다. 자세한 설정 방법은 [변수 설정 가이드](terraform-variables.md)를 참조하세요.
+[`terraform.tfvars`](terraform.tfvars) 파일을 환경에 맞게 수정합니다. 자세한 설정 방법은 [변수 설정 가이드](https://github.com/dongkoony/k8s-aws/blob/master/README/README-vars-kr.md)를 참조하세요.
+
+```bash
+region               = "YOUR-REGION"                # AWS 리전 예: ap-northeast-2 (서울/Seoul)
+availability_zone    = "YOUR-AZ"                    # 가용 영역 예: ap-northeast-2a
+ami_id               = "YOUR-AMI-ID"                # AMI ID (Ubuntu 22.04 LTS 기준 k8s 설치 스크립트 작성)
+master_instance_type = "YOUR-MASTER-TYPE"           # 마스터 노드 인스턴스 타입 예: t3.medium
+node_instance_type   = "YOUR-WORKER-TYPE"           # 워커 노드 인스턴스 타입 예: t3.medium
+worker_instance_count= "YOUR-WORKER-COUNT"          # 워커 노드 수 예: 2
+volume_size          = "YOUR-VOLUME-SIZE"           # 루트 볼륨 크기(GB)
+volume_type          = "YOUR-VOLUME-TYPE"           # 볼륨 타입 예: gp3
+key_name             = "YOUR-KEY-NAME"              # SSH 키 페어 이름
+private_key_path     = "YOUR-KEY-PATH"              # 프라이빗 키 경로  예: /home/ubuntu/your-key.pem
+private_key_name     = "YOUR-KEY-FILE-NAME"         # 프라이빗 키 파일 예: your-key.pem
+```
 
 ### 4. Terraform 명령 실행
 ```bash

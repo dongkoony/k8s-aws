@@ -58,7 +58,21 @@ cd k8s-aws
 ```
 
 ### 3. Modify Variable Configuration File
-Modify the [`terraform.tfvars`](terraform.tfvars) file according to your environment. Refer to the [variable configuration guide](terraform-variables.md) for detailed settings.
+Modify the [`terraform.tfvars`](terraform.tfvars) file according to your environment. Refer to the [variable configuration guide](https://github.com/dongkoony/k8s-aws/blob/master/README/README-vars-en.md) for detailed settings.
+
+```bash
+region               = "YOUR-REGION"                # AAWS Region. ex: ap-northeast-2 (Seoul)
+availability_zone    = "YOUR-AZ"                    # Availability Zone. ex: ap-northeast-2a
+ami_id               = "YOUR-AMI-ID"                # AMI ID (k8s installation script based on Ubuntu 22.04 LTS)
+master_instance_type = "YOUR-MASTER-TYPE"           # Master node instance type. ex: t3.medium
+node_instance_type   = "YOUR-WORKER-TYPE"           # Worker node instance type. ex: t3.medium
+worker_instance_count= "YOUR-WORKER-COUNT"          # Number of worker nodes. ex: 2
+volume_size          = "YOUR-VOLUME-SIZE"           # Root volume size(GB). ex: 30
+volume_type          = "YOUR-VOLUME-TYPE"           # Volume type. ex: gp3
+key_name             = "YOUR-KEY-NAME"              # SSH key pair name
+private_key_path     = "YOUR-KEY-PATH"              # Private key path. ex: /home/ubuntu/your-key.pem
+private_key_name     = "YOUR-KEY-FILE-NAME"         # Private key filename. ex: your-key.pem
+```
 
 ### 4. Execute Terraform Commands
 ```bash
