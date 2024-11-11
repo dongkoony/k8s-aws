@@ -1,89 +1,97 @@
-# Kubernetes 1.27 자동 설치 스크립트
-
+## Kubernetes 설치 스크립트 (combined_settings.sh)
 [![EN](https://img.shields.io/badge/lang-en-blue.svg)](README-en.md) 
 [![KR](https://img.shields.io/badge/lang-kr-red.svg)](README.md)
 
-AWS EC2 인스턴스(UBUNTU 22.04LTS)에 Kubernetes 1.27 클러스터를 자동으로 구축하는 스크립트입니다. 시스템 설정, 네트워크 구성, Docker 설치, Kubernetes 설치 및 초기화를 자동화합니다.
+이 스크립트는 AWS EC2 인스턴스에 Kubernetes v1.31과 Calico CNI v3.28.0을 자동으로 설치하고 구성하는 통합 설정 스크립트입니다.
 
-## 주요 기능
+### 주요 구성 요소
 
-- Kubernetes 1.27 버전 자동 설치
-- Docker 및 containerd 설치 및 구성
-- 시스템 시간대 자동 설정 (Asia/Seoul)
-- SSH 보안 강화 (포트 변경)
-- Calico CNI 네트워크 플러그인 설치
-- 마스터/워커 노드 자동 구성
-
-## 환경 변수 설정 가이드
-
-스크립트의 동작을 사용자의 환경에 맞게 수정하려면 다음 환경 변수들을 조정하시면 됩니다:
-
-### 시스템 설정
+#### 1. 환경 변수 설정
 ```bash
-# 로그 설정
-LOG_FILE="/home/ubuntu/combined_settings.log"  # 로그 파일 위치
-LOG_PREFIX="[K8S-SETUP]"                       # 로그 접두사
-
-# 기본 시스템 설정
-TIMEZONE="Asia/Seoul"                         # 시스템 시간대
-SSH_PORT="1717"                               # SSH 포트 번호
-SSH_CONFIG="/etc/ssh/sshd_config"             # SSH 설정 파일 위치
+# Kubernetes 버전: v1.31.0
+# Calico CNI 버전: v3.28.0
+# Pod CIDR: 10.244.0.0/16
+# Service CIDR: 10.96.0.0/12
 ```
 
-### 쿠버네티스 설정
-```bash
-# 네트워크 설정
-POD_CIDR="10.244.0.0/16"                     # Pod 네트워크 대역
-CNI_VERSION="v3.26.1"                        # Calico CNI 버전
-CNI_MANIFEST="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/tigera-operator.yaml"
-CNI_MANIFEST_CUSTOM="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/custom-resources.yaml"
+#### 2. 시스템 요구사항
+- 최소 CPU 코어: 2개
+- 최소 메모리: 2GB
+- 필수 포트: 6443, 10250, 10251, 10252, 2379, 2380
 
-# 쿠버네티스 버전
-K8S_VERSION="1.27.16-1.1"                    # 쿠버네티스 버전
+### 주요 기능
+
+#### 1. 네트워크 설정
+- 커널 모듈 설정 (overlay, br_netfilter)
+- 시스템 네트워크 파라미터 구성
+- Calico CNI 자동 설치 및 구성
+
+#### 2. 컨테이너 런타임 설치
+- Docker 설치 및 구성
+- Containerd 설정 최적화
+- SystemdCgroup 활성화
+
+#### 3. Kubernetes 설치
+- kubelet, kubeadm, kubectl 설치
+- 버전 고정을 통한 안정성 확보
+- 자동 버전 관리
+
+#### 4. 마스터 노드 설정
+- kubeadm을 통한 클러스터 초기화
+- API 서버 엔드포인트 구성
+- kubeconfig 자동 설정
+
+#### 5. CNI 구성
+- Calico CNI 자동 설치
+- 네트워크 정책 설정
+- Pod 네트워크 구성
+
+### 사용 방법 (수동 설치)
+
+1. **스크립트 실행 권한 설정**
+```bash
+chmod +x combined_settings.sh
 ```
 
-### 시스템 요구사항
+2. **마스터 노드 설치**
 ```bash
-MIN_CPU_CORES=2                              # 최소 CPU 코어 수
-MIN_MEMORY_GB=2                              # 최소 메모리 (GB)
-REQUIRED_PORTS=(6443 10250 10251 10252)      # 필요한 포트 번호
+export NODE_ROLE=master
+sudo -E ./combined_settings.sh
 ```
 
-### 재시도 설정
+3. **워커 노드 설치**
 ```bash
-MAX_RETRIES=3                                # 최대 재시도 횟수
-RETRY_INTERVAL=30                            # 재시도 간격 (초)
-WAIT_INTERVAL=10                             # 대기 간격 (초)
+export NODE_ROLE=worker
+export MASTER_PRIVATE_IP=<마스터_노드_IP>
+sudo -E ./combined_settings.sh
 ```
 
-## 시스템 요구사항
+### 주요 기능 설명
 
-- Ubuntu 운영체제
-- 최소 2 CPU 코어
-- 최소 2GB RAM
-- 인터넷 연결
-- root 또는 sudo 권한
+#### 자동 검증 및 오류 처리
+- 시스템 요구사항 자동 검증
+- 설치 과정 중 오류 발생 시 자동 롤백
+- 상세한 로그 기록 (/home/ubuntu/combined_settings.log)
 
-## 로그 확인
+#### CNI 설치 및 검증
+- Calico Operator 자동 설치
+- CNI 구성 요소 상태 모니터링
+- 네트워크 정책 자동 구성
 
-설치 과정은 다음 위치에서 확인할 수 있습니다:
-```bash
-tail -f /home/ubuntu/combined_settings.log
-```
+#### 클러스터 조인 자동화
+- 조인 토큰 자동 생성
+- 워커 노드 자동 조인 설정
+- 보안 설정 자동 구성
 
-## 주의사항
+### 주의사항
+1. 스크립트 실행 전 AWS EC2 인스턴스 요구사항 확인
+2. 마스터 노드 설치 완료 후 워커 노드 설치 진행
+3. 네트워크 보안 그룹에서 필요한 포트 개방 확인
+4. 충분한 디스크 공간 확보 (최소 20GB 권장)
 
-- 스크립트는 **Ubuntu22.04LTS** 운영체제에서 테스트되었습니다.
-- 실행 전 시스템(EC2 인스턴스) 요구사항을 충족하는지 확인하세요.
-- 방화벽 설정에서 필요한 포트가 열려있는지 확인하세요.
+### 문제 해결
+- 로그 파일 확인: `/home/ubuntu/combined_settings.log`
+- CNI 상태 확인: `kubectl get pods -n calico-system`
+- 노드 상태 확인: `kubectl get nodes`
 
-## 문제 해결
-
-설치 중 문제가 발생하면 다음 로그 파일들을 확인하세요:
-- `/home/ubuntu/combined_settings.log`: 전체 설치 로그
-- `/var/log/kubeadm_init.log`: kubeadm 초기화 로그
-- `journalctl -xeu kubelet`: kubelet 서비스 로그
-
-## 라이센스
-
-이 프로젝트는 [MIT 라이센스](https://github.com/dongkoony/k8s-aws/blob/master/LICENSE) 하에 있습니다. 자세한 내용은 [LICENSE](https://github.com/dongkoony/k8s-aws/blob/master/LICENSE) 파일을 참조하세요.
+이 스크립트는 Terraform을 통해 자동으로 실행되도록 설계되었으며, 수동 실행도 가능합니다.

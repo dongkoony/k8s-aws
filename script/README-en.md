@@ -1,89 +1,97 @@
-# Kubernetes 1.27 Automated Installation Script
-
+## Kubernetes Installation Script (combined_settings.sh)
 [![EN](https://img.shields.io/badge/lang-en-blue.svg)](README-en.md) 
 [![KR](https://img.shields.io/badge/lang-kr-red.svg)](README.md)
 
-A script that automatically builds a Kubernetes 1.27 cluster on AWS EC2 instances(UBUNTU 22.04LTS). It automates system configuration, network setup, Docker installation, Kubernetes installation, and initialization.
+This script automates the installation and configuration of Kubernetes v1.31 and Calico CNI v3.28.0 on AWS EC2 instances.
 
-## Key Features
+### Key Components
 
-- Automated installation of Kubernetes 1.27
-- Docker and containerd installation and configuration
-- Automatic system timezone setting (Asia/Seoul)
-- Enhanced SSH security (port modification)
-- Calico CNI network plugin installation
-- Master/Worker node automatic configuration
-
-## Environment Variables Guide
-
-To customize the script's behavior for your environment, adjust the following environment variables:
-
-### System Settings
+#### 1. Environment Variables
 ```bash
-# Log Settings
-LOG_FILE="/home/ubuntu/combined_settings.log"  # Log file location
-LOG_PREFIX="[K8S-SETUP]"                       # Log prefix
-
-# Basic System Settings
-TIMEZONE="Asia/Seoul"                         # System timezone
-SSH_PORT="1717"                               # SSH port number
-SSH_CONFIG="/etc/ssh/sshd_config"             # SSH config file location
+# Kubernetes version: v1.31.0
+# Calico CNI version: v3.28.0
+# Pod CIDR: 10.244.0.0/16
+# Service CIDR: 10.96.0.0/12
 ```
 
-### Kubernetes Settings
-```bash
-# Network Settings
-POD_CIDR="10.244.0.0/16"                     # Pod network CIDR
-CNI_VERSION="v3.26.1"                        # Calico CNI version
-CNI_MANIFEST="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/tigera-operator.yaml"
-CNI_MANIFEST_CUSTOM="https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/custom-resources.yaml"
+#### 2. System Requirements
+- Minimum CPU cores: 2
+- Minimum Memory: 2GB
+- Required ports: 6443, 10250, 10251, 10252, 2379, 2380
 
-# Kubernetes Version
-K8S_VERSION="1.27.16-1.1"                    # Kubernetes version
+### Main Features
+
+#### 1. Network Configuration
+- Kernel module setup (overlay, br_netfilter)
+- System network parameter configuration
+- Automatic Calico CNI installation and setup
+
+#### 2. Container Runtime Installation
+- Docker installation and configuration
+- Containerd optimization
+- SystemdCgroup activation
+
+#### 3. Kubernetes Installation
+- Installation of kubelet, kubeadm, kubectl
+- Version pinning for stability
+- Automatic version management
+
+#### 4. Master Node Configuration
+- Cluster initialization via kubeadm
+- API server endpoint configuration
+- Automatic kubeconfig setup
+
+#### 5. CNI Configuration
+- Automatic Calico CNI installation
+- Network policy setup
+- Pod network configuration
+
+### Usage Instructions (Manual Installation)
+
+1. **Set Script Execution Permissions**
+```bash
+chmod +x combined_settings.sh
 ```
 
-### System Requirements
+2. **Master Node Installation**
 ```bash
-MIN_CPU_CORES=2                              # Minimum CPU cores
-MIN_MEMORY_GB=2                              # Minimum memory (GB)
-REQUIRED_PORTS=(6443 10250 10251 10252)      # Required ports
+export NODE_ROLE=master
+sudo -E ./combined_settings.sh
 ```
 
-### Retry Settings
+3. **Worker Node Installation**
 ```bash
-MAX_RETRIES=3                                # Maximum retry attempts
-RETRY_INTERVAL=30                            # Retry interval (seconds)
-WAIT_INTERVAL=10                             # Wait interval (seconds)
+export NODE_ROLE=worker
+export MASTER_PRIVATE_IP=<master_node_IP>
+sudo -E ./combined_settings.sh
 ```
 
-## System Requirements
+### Feature Details
 
-- Ubuntu operating system
-- Minimum 2 CPU cores
-- Minimum 2GB RAM
-- Internet connectivity
-- Root or sudo privileges
+#### Automatic Validation and Error Handling
+- Automatic system requirements validation
+- Automatic rollback on installation errors
+- Detailed logging (/home/ubuntu/combined_settings.log)
 
-## Log Monitoring
+#### CNI Installation and Verification
+- Automatic Calico Operator installation
+- CNI component status monitoring
+- Automatic network policy configuration
 
-Installation progress can be monitored at:
-```bash
-tail -f /home/ubuntu/combined_settings.log
-```
+#### Cluster Join Automation
+- Automatic join token generation
+- Worker node join automation
+- Security settings configuration
 
-## Important Notes
+### Precautions
+1. Verify AWS EC2 instance requirements before script execution
+2. Complete master node installation before worker node setup
+3. Verify required ports are open in security groups
+4. Ensure sufficient disk space (minimum 20GB recommended)
 
-- Script has been tested on Ubuntu operating system
-- Verify system requirements before execution
-- Ensure required ports are open in firewall settings
+### Troubleshooting
+- Check log file: `/home/ubuntu/combined_settings.log`
+- Verify CNI status: `kubectl get pods -n calico-system`
+- Check node status: `kubectl get nodes`
 
-## Troubleshooting
-
-If issues occur during installation, check these log files:
-- `/home/ubuntu/combined_settings.log`: Complete installation log
-- `/var/log/kubeadm_init.log`: kubeadm initialization log
-- `journalctl -xeu kubelet`: kubelet service log
-
-## License
-
-This project is licensed under the [MIT License](https://github.com/dongkoony/k8s-aws/blob/master/LICENSE). See the[ LICENSE](https://github.com/dongkoony/k8s-aws/blob/master/LICENSE) file for details.
+This script is designed to run automatically through Terraform but can also be executed manually.
