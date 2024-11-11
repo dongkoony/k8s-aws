@@ -86,17 +86,17 @@ resource "aws_security_group" "k8s_sg" {
 
 # 마스터 노드 생성
 resource "aws_instance" "k8s_master" {
-  ami                      = var.ami_id
+  ami                     = var.ami_id
   instance_type           = var.master_instance_type
   availability_zone       = var.availability_zone
   subnet_id               = aws_subnet.public_subnet.id
   vpc_security_group_ids  = [aws_security_group.k8s_sg.id]
-  key_name               = var.key_name
+  key_name                = var.key_name
   disable_api_termination = true
 
   root_block_device {
-    volume_size = 20
-    volume_type = "gp3"
+    volume_size = var.volume_size
+    volume_type = var.volume_type
     tags = {
       Name = "k8s-master-root"
     }
@@ -192,16 +192,16 @@ resource "aws_instance" "k8s_master" {
 resource "aws_instance" "k8s_workers" {
   count                   = var.worker_instance_count
   ami                     = var.ami_id
-  instance_type          = var.node_instance_type
-  availability_zone      = var.availability_zone
-  subnet_id              = aws_subnet.private_subnet.id
-  vpc_security_group_ids = [aws_security_group.k8s_sg.id]
-  key_name               = var.key_name
+  instance_type           = var.node_instance_type
+  availability_zone       = var.availability_zone
+  subnet_id               = aws_subnet.private_subnet.id
+  vpc_security_group_ids  = [aws_security_group.k8s_sg.id]
+  key_name                = var.key_name
   disable_api_termination = true
 
   root_block_device {
-    volume_size = 20
-    volume_type = "gp3"
+    volume_size = var.volume_size
+    volume_type = var.volume_type
     tags = {
       Name = "k8s-worker-${count.index + 1}-root"
     }
