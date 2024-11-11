@@ -7,7 +7,7 @@
 # 기본 변수 설정
 MASTER_IP="$1"
 NODE_INDEX="$2"
-SSH_KEY_PATH="/home/ubuntu/.ssh/k8s-aws.pem"
+SSH_KEY_PATH="/your/key/path/your-key.pem"
 
 #################################################################
 # ---------------- SSH 설정 섹션 ------------------
