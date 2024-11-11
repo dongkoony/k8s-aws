@@ -13,16 +13,16 @@ output "worker_ips" {
   }
 }
 
-# 필요한 경우 스냅샷 ID도 출력할 수 있습니다
-output "master_snapshot_id" {
-  description = "Master node EBS snapshot ID"
-  value       = aws_ebs_snapshot.master_snapshot.id
-}
+# # 필요한 경우 스냅샷 ID도 출력할 수 있습니다
+# output "master_snapshot_id" {
+#   description = "Master node EBS snapshot ID"
+#   value       = aws_ebs_snapshot.master_snapshot.id
+# }
 
-output "worker_snapshot_ids" {
-  description = "Worker nodes EBS snapshot IDs"
-  value = {
-    node1 = aws_ebs_snapshot.worker_snapshots[0].id
-    node2 = aws_ebs_snapshot.worker_snapshots[1].id
-  }
-}
+# output "worker_snapshot_ids" {
+#   description = "Worker nodes EBS snapshot IDs"
+#   value = {
+#     node1 = aws_ebs_snapshot.worker_snapshots[0].id
+#     node2 = aws_ebs_snapshot.worker_snapshots[1].id
+#   }
+# }
