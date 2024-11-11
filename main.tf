@@ -10,15 +10,7 @@ resource "aws_security_group" "k8s_sg" {
   vpc_id      = aws_vpc.k8s_vpc.id
   description = "Security group for Kubernetes master and nodes"
 
-  # 초기 SSH 연결용 22번 포트
-  # ingress {
-  #   from_port   = 22
-  #   to_port     = 22
-  #   protocol    = "tcp"
-  #   cidr_blocks = ["0.0.0.0/0"]
-  # }
-
-  # 변경된 SSH 포트 22
+  # SSH 포트 22
   ingress {
     from_port   = 22
     to_port     = 22
@@ -92,6 +84,239 @@ resource "aws_security_group" "k8s_sg" {
   }
 }
 
+# 마스터 노드 생성
+resource "aws_instance" "k8s_master" {
+  ami                      = var.ami_id
+  instance_type           = var.master_instance_type
+  availability_zone       = var.availability_zone
+  subnet_id               = aws_subnet.public_subnet.id
+  vpc_security_group_ids  = [aws_security_group.k8s_sg.id]
+  key_name               = var.key_name
+  disable_api_termination = true
+
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+    tags = {
+      Name = "k8s-master-root"
+    }
+  }
+
+  tags = {
+    Name = "k8s-master"
+    Role = "master"
+  }
+
+  user_data = file("./script/system_settings.sh")
+
+  # SSH 설정을 위한 초기 provisioner
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("${var.private_key_path}")
+      host        = self.public_ip
+      port        = 22
+      timeout     = "5m"
+    }
+
+    inline = [
+      # SSH 디렉토리 설정
+      "mkdir -p ~/.ssh",
+      "chmod 700 ~/.ssh",
+      "touch ~/.ssh/known_hosts",
+      "chmod 600 ~/.ssh/known_hosts",
+      
+      # 키 파일 복사 및 권한 설정
+      "cp /home/ubuntu/${var.private_key_name} ~/.ssh/",
+      "chmod 400 ~/.ssh/${var.private_key_name}",
+      
+      # SSH 설정
+      "echo 'StrictHostKeyChecking no' > ~/.ssh/config",
+      "chmod 600 ~/.ssh/config",
+      
+      "echo '시스템 설정 완료'"
+    ]
+  }
+
+  # 시스템 설정 완료 대기
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("${var.private_key_path}")
+      host        = self.public_ip
+      port        = 22
+      timeout     = "5m"
+    }
+
+    inline = [
+      "while [ ! -f /home/ubuntu/.system_settings_complete ]; do sleep 10; done",
+      "echo '시스템 설정 완료'"
+    ]
+  }
+
+  # 쿠버네티스 설치
+  provisioner "file" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("${var.private_key_path}")
+      host        = self.public_ip
+      port        = 22
+    }
+
+    source      = "./script/combined_settings.sh"
+    destination = "/home/ubuntu/combined_settings.sh"
+  }
+
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ubuntu"
+      private_key = file("${var.private_key_path}")
+      host        = self.public_ip
+      port        = 22
+    }
+
+    inline = [
+      "chmod +x /home/ubuntu/combined_settings.sh",
+      "export NODE_ROLE=master",
+      "sudo -E /home/ubuntu/combined_settings.sh",
+      "echo 'Kubernetes setup completed'"
+    ]
+  }
+}
+
+# 워커 노드 생성
+resource "aws_instance" "k8s_workers" {
+  count                   = var.worker_instance_count
+  ami                     = var.ami_id
+  instance_type          = var.node_instance_type
+  availability_zone      = var.availability_zone
+  subnet_id              = aws_subnet.private_subnet.id
+  vpc_security_group_ids = [aws_security_group.k8s_sg.id]
+  key_name               = var.key_name
+  disable_api_termination = true
+
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+    tags = {
+      Name = "k8s-worker-${count.index + 1}-root"
+    }
+  }
+
+  tags = {
+    Name = "k8s-worker-${count.index + 1}"
+    Role = "worker-node${count.index + 1}"
+  }
+
+  user_data = file("./script/system_settings.sh")
+
+  provisioner "remote-exec" {
+    connection {
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = file(var.private_key_path)
+      host                = self.private_ip
+      port                = 22
+      bastion_host        = aws_instance.k8s_master.public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = file(var.private_key_path)
+      bastion_port        = 22
+      timeout             = "5m"
+    }
+
+    inline = [
+      "sudo mkdir -p /home/ubuntu/.ssh",
+      "sudo chown -R ubuntu:ubuntu /home/ubuntu/.ssh",
+      "sudo chmod 700 /home/ubuntu/.ssh",
+      "while [ ! -f /home/ubuntu/.system_settings_complete ]; do sleep 10; done",
+      "echo '시스템 설정 완료'"
+    ]
+  }
+
+  provisioner "file" {
+    connection {
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = file(var.private_key_path)
+      host                = self.private_ip
+      port                = 22
+      bastion_host        = aws_instance.k8s_master.public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = file(var.private_key_path)
+      bastion_port        = 22
+    }
+
+    source      = var.private_key_path
+    destination = "/home/ubuntu/.ssh/${var.private_key_name}"
+  }
+
+  provisioner "file" {
+    connection {
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = file(var.private_key_path)
+      host                = self.private_ip
+      port                = 22
+      bastion_host        = aws_instance.k8s_master.public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = file(var.private_key_path)
+      bastion_port        = 22
+    }
+
+    source      = "./script/combined_settings.sh"
+    destination = "/home/ubuntu/combined_settings.sh"
+  }
+
+  provisioner "file" {
+    connection {
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = file(var.private_key_path)
+      host                = self.private_ip
+      port                = 22
+      bastion_host        = aws_instance.k8s_master.public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = file(var.private_key_path)
+      bastion_port        = 22
+    }
+
+    source      = "./script/worker_setup.sh"
+    destination = "/home/ubuntu/worker_setup.sh"
+  }
+
+  provisioner "remote-exec" {
+    connection {
+      type                = "ssh"
+      user                = "ubuntu"
+      private_key         = file(var.private_key_path)
+      host                = self.private_ip
+      port                = 22
+      bastion_host        = aws_instance.k8s_master.public_ip
+      bastion_user        = "ubuntu"
+      bastion_private_key = file(var.private_key_path)
+      bastion_port        = 22
+    }
+
+    inline = [
+      "chmod +x /home/ubuntu/worker_setup.sh",
+      "/home/ubuntu/worker_setup.sh '${aws_instance.k8s_master.private_ip}' '${count.index + 1}'"
+    ]
+  }
+
+  depends_on = [aws_instance.k8s_master]
+}
+
+
+
+
+
+
+
+
 # # 마스터 노드 스냅샷
 # data "aws_ebs_snapshot" "master_snapshot" {
 #   most_recent = true
@@ -134,229 +359,6 @@ resource "aws_security_group" "k8s_sg" {
 #   }
 # }
 
-# 마스터 노드 생성
-resource "aws_instance" "k8s_master" {
-  ami                      = var.ami_id
-  instance_type           = var.master_instance_type
-  availability_zone       = var.availability_zone
-  subnet_id               = aws_subnet.public_subnet.id
-  vpc_security_group_ids  = [aws_security_group.k8s_sg.id]
-  key_name               = var.key_name
-  disable_api_termination = true
-
-  root_block_device {
-    volume_size = 20
-    volume_type = "gp3"
-    tags = {
-      Name = "k8s-master-root"
-    }
-  }
-
-  tags = {
-    Name = "k8s-master"
-    Role = "master"
-  }
-
-  user_data = file("./script/system_settings.sh")
-
-  # SSH 설정을 위한 초기 provisioner
-  provisioner "remote-exec" {
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file("/home/ubuntu/Project/k8s-aws.pem")
-      host        = self.public_ip
-      port        = 22
-      timeout     = "5m"
-    }
-
-    inline = [
-      # SSH 디렉토리 설정
-      "mkdir -p ~/.ssh",
-      "chmod 700 ~/.ssh",
-      "touch ~/.ssh/known_hosts",
-      "chmod 600 ~/.ssh/known_hosts",
-      
-      # 키 파일 복사 및 권한 설정
-      "cp /home/ubuntu/k8s-aws.pem ~/.ssh/",
-      "chmod 400 ~/.ssh/k8s-aws.pem",
-      
-      # SSH 설정
-      "echo 'StrictHostKeyChecking no' > ~/.ssh/config",
-      "chmod 600 ~/.ssh/config",
-      
-      "echo '시스템 설정 완료'"
-    ]
-  }
-
-  # 시스템 설정 완료 대기
-  provisioner "remote-exec" {
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file("/home/ubuntu/Project/k8s-aws.pem")
-      host        = self.public_ip
-      port        = 22
-      timeout     = "5m"
-    }
-
-    inline = [
-      "while [ ! -f /home/ubuntu/.system_settings_complete ]; do sleep 10; done",
-      "echo '시스템 설정 완료'"
-    ]
-  }
-
-  # 쿠버네티스 설치
-  provisioner "file" {
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file("/home/ubuntu/Project/k8s-aws.pem")
-      host        = self.public_ip
-      port        = 22
-    }
-
-    source      = "./script/combined_settings.sh"
-    destination = "/home/ubuntu/combined_settings.sh"
-  }
-
-  provisioner "remote-exec" {
-    connection {
-      type        = "ssh"
-      user        = "ubuntu"
-      private_key = file("/home/ubuntu/Project/k8s-aws.pem")
-      host        = self.public_ip
-      port        = 22
-    }
-
-    inline = [
-      "chmod +x /home/ubuntu/combined_settings.sh",
-      "export NODE_ROLE=master",
-      "sudo -E /home/ubuntu/combined_settings.sh",
-      "echo 'Kubernetes setup completed'"
-    ]
-  }
-}
-
-# 워커 노드 생성
-resource "aws_instance" "k8s_workers" {
-  count                  = var.worker_instance_count
-  ami                    = var.ami_id
-  instance_type          = var.node_instance_type
-  availability_zone      = var.availability_zone
-  subnet_id              = aws_subnet.private_subnet.id
-  vpc_security_group_ids = [aws_security_group.k8s_sg.id]
-  key_name               = var.key_name
-  disable_api_termination = true
-
-  root_block_device {
-    volume_size = 20
-    volume_type = "gp3"
-    tags = {
-      Name = "k8s-worker-${count.index + 1}-root"
-    }
-  }
-
-  tags = {
-    Name = "k8s-worker-${count.index + 1}"
-    Role = "worker"
-  }
-
-  user_data = file("./script/system_settings.sh")
-
-  # 시스템 설정 완료 대기 및 SSH 디렉토리 설정
-  provisioner "remote-exec" {
-    connection {
-      type                = "ssh"
-      user                = "ubuntu"
-      private_key         = file("/home/ubuntu/Project/k8s-aws.pem")  # 절대 경로 사용
-      host                = self.private_ip
-      port                = 22
-      bastion_host        = aws_instance.k8s_master.public_ip
-      bastion_user        = "ubuntu"
-      bastion_private_key = file("/home/ubuntu/Project/k8s-aws.pem")  # 절대 경로 사용
-      bastion_port        = 22
-      timeout             = "5m"
-    }
-
-    inline = [
-      "sudo mkdir -p /home/ubuntu/.ssh",
-      "sudo chown -R ubuntu:ubuntu /home/ubuntu/.ssh",
-      "sudo chmod 700 /home/ubuntu/.ssh",
-      "while [ ! -f /home/ubuntu/.system_settings_complete ]; do sleep 10; done",
-      "echo '시스템 설정 완료'"
-    ]
-  }
-
-  # SSH 키 파일 복사
-  provisioner "file" {
-    connection {
-      type                = "ssh"
-      user                = "ubuntu"
-      private_key         = file("/home/ubuntu/Project/k8s-aws.pem")
-      host                = self.private_ip
-      port                = 22
-      bastion_host        = aws_instance.k8s_master.public_ip
-      bastion_user        = "ubuntu"
-      bastion_private_key = file("/home/ubuntu/Project/k8s-aws.pem")
-      bastion_port        = 22
-    }
-
-    source      = "/home/ubuntu/Project/k8s-aws.pem"
-    destination = "/home/ubuntu/.ssh/k8s-aws.pem"
-  }
-
-  # 3. 쿠버네티스 설치 스크립트 전송
-  provisioner "file" {
-    connection {
-      type                = "ssh"
-      user                = "ubuntu"
-      private_key         = file("/home/ubuntu/Project/k8s-aws.pem")
-      host                = self.private_ip
-      port                = 22
-      bastion_host        = aws_instance.k8s_master.public_ip
-      bastion_user        = "ubuntu"
-      bastion_private_key = file("/home/ubuntu/Project/k8s-aws.pem")
-      bastion_port        = 22
-    }
-
-    source      = "./script/combined_settings.sh"
-    destination = "/home/ubuntu/combined_settings.sh"
-  }
-
-  # 4. 쿠버네티스 설치 및 클러스터 조인
-  provisioner "remote-exec" {
-    connection {
-      type                = "ssh"
-      user                = "ubuntu"
-      private_key         = file("/home/ubuntu/Project/k8s-aws.pem")
-      host                = self.private_ip
-      port                = 22
-      bastion_host        = aws_instance.k8s_master.public_ip
-      bastion_user        = "ubuntu"
-      bastion_private_key = file("/home/ubuntu/Project/k8s-aws.pem")
-      bastion_port        = 22
-    }
-
-    inline = [
-      "sudo chmod 400 /home/ubuntu/.ssh/k8s-aws.pem",
-      "chmod +x /home/ubuntu/combined_settings.sh",
-      "export NODE_ROLE=worker",
-      "export MASTER_PRIVATE_IP=${aws_instance.k8s_master.private_ip}",
-      "sudo -E /home/ubuntu/combined_settings.sh",
-      "touch /home/ubuntu/.ssh/known_hosts",
-      "echo 'StrictHostKeyChecking no' > /home/ubuntu/.ssh/config",
-      "chmod 600 /home/ubuntu/.ssh/config",
-      "ssh-keyscan -p 22 ${aws_instance.k8s_master.public_ip} 2>/dev/null >> /home/ubuntu/.ssh/known_hosts",
-      "ssh-keyscan -p 22 ${aws_instance.k8s_master.private_ip} 2>/dev/null >> /home/ubuntu/.ssh/known_hosts",
-      "until ssh -i /home/ubuntu/.ssh/k8s-aws.pem -o StrictHostKeyChecking=no ubuntu@${aws_instance.k8s_master.private_ip} 'test -f /home/ubuntu/join_command'; do sleep 10; done",
-      "JOIN_CMD=$(ssh -i /home/ubuntu/.ssh/k8s-aws.pem -o StrictHostKeyChecking=no ubuntu@${aws_instance.k8s_master.private_ip} 'cat /home/ubuntu/join_command')",
-      "sudo $JOIN_CMD"
-    ]
-  }
-
-  depends_on = [aws_instance.k8s_master]
-}
 
 # # EBS 볼륨 생성
 # resource "aws_ebs_volume" "k8s_volumes" {
