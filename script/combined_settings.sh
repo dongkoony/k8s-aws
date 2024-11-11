@@ -199,6 +199,48 @@ install_kubernetes() {
 # ---------------- 마스터 노드 초기화 섹션 ------------------
 #################################################################
 
+# initialize_master() {
+#     log "마스터 노드 초기화 시작"
+
+#     # kubeadm 설정 생성
+#     cat > /tmp/kubeadm-config.yaml <<EOF
+# apiVersion: kubeadm.k8s.io/v1beta3
+# kind: InitConfiguration
+# localAPIEndpoint:
+#   advertiseAddress: ${EC2_LOCAL_IP}
+#   bindPort: 6443
+# nodeRegistration:
+#   criSocket: unix:///var/run/containerd/containerd.sock
+# ---
+# apiVersion: kubeadm.k8s.io/v1beta3
+# kind: ClusterConfiguration
+# networking:
+#   serviceSubnet: ${SERVICE_CIDR}
+#   podSubnet: ${POD_CIDR}
+#   dnsDomain: ${DNS_DOMAIN}
+# EOF
+
+#     # 마스터 노드 초기화
+#     local retry_count=0
+#     while [ ${retry_count} -lt ${MAX_RETRIES} ]; do
+#         if kubeadm init --config=/tmp/kubeadm-config.yaml --upload-certs > /var/log/kubeadm_init.log 2>&1; then
+#             log "마스터 노드 초기화 성공"
+#             break
+#         fi
+#         retry_count=$((retry_count + 1))
+#         log "초기화 실패. ${RETRY_INTERVAL}초 후 재시도... (${retry_count}/${MAX_RETRIES})"
+#         sleep ${RETRY_INTERVAL}
+#     done
+
+#     # kubeconfig 설정
+#     mkdir -p $(dirname ${KUBECONFIG})
+#     cp -i ${K8S_CONFIG_DIR}/admin.conf ${KUBECONFIG}
+#     chown $(id -u ubuntu):$(id -g ubuntu) ${KUBECONFIG}
+
+#     install_cni
+#     log "마스터 노드 초기화 완료"
+# }
+
 initialize_master() {
     log "마스터 노드 초기화 시작"
 
@@ -222,9 +264,11 @@ EOF
 
     # 마스터 노드 초기화
     local retry_count=0
+    local init_success=false
     while [ ${retry_count} -lt ${MAX_RETRIES} ]; do
         if kubeadm init --config=/tmp/kubeadm-config.yaml --upload-certs > /var/log/kubeadm_init.log 2>&1; then
             log "마스터 노드 초기화 성공"
+            init_success=true
             break
         fi
         retry_count=$((retry_count + 1))
@@ -232,13 +276,37 @@ EOF
         sleep ${RETRY_INTERVAL}
     done
 
+    # 초기화 실패 시 종료
+    if [ "$init_success" = false ]; then
+        log "마스터 노드 초기화 최종 실패"
+        return 1
+    fi
+
     # kubeconfig 설정
     mkdir -p $(dirname ${KUBECONFIG})
     cp -i ${K8S_CONFIG_DIR}/admin.conf ${KUBECONFIG}
     chown $(id -u ubuntu):$(id -g ubuntu) ${KUBECONFIG}
 
-    install_cni
+    # CNI 설치
+    if ! install_cni; then
+        log "CNI 설치 실패"
+        return 1
+    fi
+
+    # Join 명령어 생성
+    log "Join 명령어 생성 중..."
+    kubeadm token create --print-join-command > /home/ubuntu/join_command
+    chown ubuntu:ubuntu /home/ubuntu/join_command
+    chmod 644 /home/ubuntu/join_command
+    
+    # Join 명령어 파일 생성 확인
+    if [ ! -f /home/ubuntu/join_command ]; then
+        log "Join 명령어 파일 생성 실패"
+        return 1
+    fi
+
     log "마스터 노드 초기화 완료"
+    return 0
 }
 
 #################################################################
@@ -367,18 +435,38 @@ install_cni() {
 # ---------------- Join 명령어 생성 섹션 ------------------
 #################################################################
 
+# generate_join_command() {
+#     log "Join 명령어 생성 시작"
+    
+#     local join_command=$(kubeadm token create --print-join-command)
+#     echo "${join_command}" > /home/ubuntu/kubeadm_join_cmd.sh
+#     check_error "Join 명령어 생성 실패"
+
+#     # HTTP 서버 시작
+#     cd /home/ubuntu
+#     nohup python3 -m http.server 8080 >> "${LOG_FILE}" 2>&1 &
+#     sleep 30
+
+#     log "Join 명령어 생성 완료"
+# }
+
 generate_join_command() {
     log "Join 명령어 생성 시작"
     
+    # join 명령어 생성
     local join_command=$(kubeadm token create --print-join-command)
-    echo "${join_command}" > /home/ubuntu/kubeadm_join_cmd.sh
-    check_error "Join 명령어 생성 실패"
-
-    # HTTP 서버 시작
-    cd /home/ubuntu
-    nohup python3 -m http.server 8080 >> "${LOG_FILE}" 2>&1 &
-    sleep 30
-
+    echo "${join_command}" > /home/ubuntu/join_command
+    
+    # 파일 권한 설정
+    chown ubuntu:ubuntu /home/ubuntu/join_command
+    chmod 644 /home/ubuntu/join_command
+    
+    # 파일 생성 확인
+    if [ ! -f /home/ubuntu/join_command ]; then
+        log "Join 명령어 파일 생성 실패"
+        return 1
+    fi
+    
     log "Join 명령어 생성 완료"
 }
 
