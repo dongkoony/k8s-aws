@@ -3,6 +3,13 @@
 [![EN](https://img.shields.io/badge/lang-en-blue.svg)](README-en.md) 
 [![KR](https://img.shields.io/badge/lang-kr-red.svg)](README.md)
 
+
+[![IaC](https://img.shields.io/badge/IaC-Terraform_1.8+-623ce4?logo=terraform&logoColor=white)](#)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.31-326ce5?logo=kubernetes&logoColor=white)](#)
+[![CNI](https://img.shields.io/badge/CNI-Calico_v3.28.0-fb8c00?logo=linux&logoColor=white)](#)
+[![OS](https://img.shields.io/badge/OS-Ubuntu_22.04_LTS-e95420?logo=ubuntu&logoColor=white)](#)
+[![Cloud](https://img.shields.io/badge/Cloud-AWS-232f3e?logo=amazonaws&logoColor=white)](#)
+
 ## 개요 (Overview)
 이 레포지토리는 **Terraform**을 사용하여 **AWS EC2 인스턴스(Ubuntu 22.04 LTS)** 위에 **Kubernetes v1.31 클러스터와 Calico CNI v3.28.0**를 손쉽게 구축하고 실습할 수 있도록 설계된 인프라 코드입니다. EC2 인스턴스를 통해 Kubernetes를 설치하고, Terraform의 **apply** 명령으로 인프라가 자동으로 설정됩니다.
 
