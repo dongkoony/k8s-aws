@@ -10,6 +10,9 @@
 [![CNI](https://img.shields.io/badge/CNI-Calico_v3.28.0-fb8c00?logo=linux&logoColor=white)](#)
 [![OS](https://img.shields.io/badge/OS-Ubuntu_22.04_LTS-e95420?logo=ubuntu&logoColor=white)](#)
 [![Cloud](https://img.shields.io/badge/Cloud-AWS-232f3e?logo=amazonaws&logoColor=white)](#)
+[![License](https://img.shields.io/badge/license-MIT-green)](#)
+[![GitHub stars](https://img.shields.io/github/stars/dongkoony/k8s-aws?style=social)](#)
+[![GitHub forks](https://img.shields.io/github/forks/dongkoony/k8s-aws?style=social)](#)
 
 ## Overview
 This repository contains infrastructure code designed to easily deploy **Kubernetes v1.31 cluster with Calico CNI v3.28.0** on **AWS EC2 instances (Ubuntu 22.04 LTS)** using **Terraform**. The infrastructure is automatically configured through Terraform's **apply** command, installing Kubernetes on EC2 instances.
