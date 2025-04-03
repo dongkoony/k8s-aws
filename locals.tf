@@ -23,5 +23,5 @@
 # }
 
 locals {
-  key_destination = "/home/ubuntu/${var.key_name}"
+  key_destination = "/home/ubuntu/Project/${var.private_key_name}"
 }
