@@ -195,6 +195,78 @@ install_kubernetes() {
     log "쿠버네티스 설치 완료"
 }
 
+# #################################################################
+# # ---------------- 마스터 노드 초기화 섹션 ------------------
+# #################################################################
+
+# initialize_master() {
+#     log "마스터 노드 초기화 시작"
+
+#     # kubeadm 설정 생성
+#     cat > /tmp/kubeadm-config.yaml <<EOF
+# apiVersion: kubeadm.k8s.io/v1beta3
+# kind: InitConfiguration
+# localAPIEndpoint:
+#   advertiseAddress: ${EC2_LOCAL_IP}
+#   bindPort: 6443
+# nodeRegistration:
+#   criSocket: unix:///var/run/containerd/containerd.sock
+# ---
+# apiVersion: kubeadm.k8s.io/v1beta3
+# kind: ClusterConfiguration
+# networking:
+#   serviceSubnet: ${SERVICE_CIDR}
+#   podSubnet: ${POD_CIDR}
+#   dnsDomain: ${DNS_DOMAIN}
+# EOF
+
+#     # 마스터 노드 초기화
+#     local retry_count=0
+#     local init_success=false
+#     while [ ${retry_count} -lt ${MAX_RETRIES} ]; do
+#         if kubeadm init --config=/tmp/kubeadm-config.yaml --upload-certs > /var/log/kubeadm_init.log 2>&1; then
+#             log "마스터 노드 초기화 성공"
+#             init_success=true
+#             break
+#         fi
+#         retry_count=$((retry_count + 1))
+#         log "초기화 실패. ${RETRY_INTERVAL}초 후 재시도... (${retry_count}/${MAX_RETRIES})"
+#         sleep ${RETRY_INTERVAL}
+#     done
+
+#     # 초기화 실패 시 종료
+#     if [ "$init_success" = false ]; then
+#         log "마스터 노드 초기화 최종 실패"
+#         return 1
+#     fi
+
+#     # kubeconfig 설정
+#     mkdir -p $(dirname ${KUBECONFIG})
+#     cp -i ${K8S_CONFIG_DIR}/admin.conf ${KUBECONFIG}
+#     chown $(id -u ubuntu):$(id -g ubuntu) ${KUBECONFIG}
+
+#     # CNI 설치
+#     if ! install_cni; then
+#         log "CNI 설치 실패"
+#         return 1
+#     fi
+
+#     # Join 명령어 생성
+#     log "Join 명령어 생성 중..."
+#     kubeadm token create --print-join-command > /home/ubuntu/join_command
+#     chown ubuntu:ubuntu /home/ubuntu/join_command
+#     chmod 644 /home/ubuntu/join_command
+    
+#     # Join 명령어 파일 생성 확인
+#     if [ ! -f /home/ubuntu/join_command ]; then
+#         log "Join 명령어 파일 생성 실패"
+#         return 1
+#     fi
+
+#     log "마스터 노드 초기화 완료"
+#     return 0
+# }
+
 #################################################################
 # ---------------- 마스터 노드 초기화 섹션 ------------------
 #################################################################
@@ -220,15 +292,34 @@ networking:
   dnsDomain: ${DNS_DOMAIN}
 EOF
 
+    # API 버전 마이그레이션 시도
+    log "kubeadm 구성 파일 마이그레이션 시도 중..."
+    if kubeadm config migrate --old-config /tmp/kubeadm-config.yaml --new-config /tmp/new-kubeadm-config.yaml; then
+        log "구성 파일 마이그레이션 성공, 새 구성 파일을 사용합니다."
+        mv /tmp/new-kubeadm-config.yaml /tmp/kubeadm-config.yaml
+    else
+        log "구성 파일 마이그레이션 실패, 기존 구성 파일을 사용합니다."
+    fi
+
     # 마스터 노드 초기화
     local retry_count=0
     local init_success=false
     while [ ${retry_count} -lt ${MAX_RETRIES} ]; do
-        if kubeadm init --config=/tmp/kubeadm-config.yaml --upload-certs > /var/log/kubeadm_init.log 2>&1; then
+        # 환경 변수 설정 (선택적)
+        IPADDR=${EC2_LOCAL_IP}
+        NODENAME=$(hostname -s)
+        
+        # kubeadm init 실행 (--ignore-preflight-errors=Swap 추가)
+        if kubeadm init --config=/tmp/kubeadm-config.yaml --upload-certs --ignore-preflight-errors=Swap > /var/log/kubeadm_init.log 2>&1; then
             log "마스터 노드 초기화 성공"
             init_success=true
             break
         fi
+        
+        # 오류 로그 확인
+        log "초기화 실패. 오류 로그:"
+        cat /var/log/kubeadm_init.log
+        
         retry_count=$((retry_count + 1))
         log "초기화 실패. ${RETRY_INTERVAL}초 후 재시도... (${retry_count}/${MAX_RETRIES})"
         sleep ${RETRY_INTERVAL}
@@ -266,6 +357,7 @@ EOF
     log "마스터 노드 초기화 완료"
     return 0
 }
+
 
 #################################################################
 # ---------------- CNI 설치 섹션 ------------------
