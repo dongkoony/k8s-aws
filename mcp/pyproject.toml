@@ -1,0 +1,22 @@
+[tool.poetry]
+name = "k8s-aws-copilot"
+version = "0.1.0"
+description = "FastMCP server for k8s-aws project"
+authors = ["Shin Dong Hyeon <dhyeon.shin@icloud.com>"]
+license = "MIT"
+packages = [
+  { include = "mcp", from = "." }
+]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastmcp = "*"
+kubernetes = "*"
+boto3 = "*"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.3.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
