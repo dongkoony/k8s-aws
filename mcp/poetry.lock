@@ -229,20 +229,6 @@ files = [
 markers = {main = "platform_system == \"Windows\"", dev = "sys_platform == \"win32\""}
 
 [[package]]
-name = "dotenv"
-version = "0.9.9"
-description = "Deprecated package"
-optional = false
-python-versions = "*"
-groups = ["main"]
-files = [
-    {file = "dotenv-0.9.9-py2.py3-none-any.whl", hash = "sha256:29cf74a087b31dafdb5a446b6d7e11cbce8ed2741540e2339c69fbef92c94ce9"},
-]
-
-[package.dependencies]
-python-dotenv = "*"
-
-[[package]]
 name = "durationpy"
 version = "0.9"
 description = "Module for converting between datetime.timedelta and Go's Duration strings."
@@ -292,22 +278,22 @@ standard = ["email-validator (>=2.0.0)", "fastapi-cli[standard] (>=0.0.5)", "htt
 
 [[package]]
 name = "fastmcp"
-version = "2.2.0"
+version = "2.2.1"
 description = "The fast, Pythonic way to build MCP servers."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "fastmcp-2.2.0-py3-none-any.whl", hash = "sha256:077bdf3f37f423688f1356db0f6ed0864e001de712bce41ad4939fa8b38d7149"},
-    {file = "fastmcp-2.2.0.tar.gz", hash = "sha256:4d9373705ebd9e3de807005ed732b8955c6eb74e4b47595752f461c1c689f231"},
+    {file = "fastmcp-2.2.1-py3-none-any.whl", hash = "sha256:0e4071c290f5b00db3fd59068cc7d832981bc7458880ba4d59b8c515fef17545"},
+    {file = "fastmcp-2.2.1.tar.gz", hash = "sha256:9c3e977349a324de011c3fcab7eec15de094e8189aef2745297cc5ca687632c2"},
 ]
 
 [package.dependencies]
-dotenv = ">=0.9.9"
 exceptiongroup = ">=1.2.2"
 httpx = ">=0.28.1"
 mcp = ">=1.6.0,<2.0.0"
 openapi-pydantic = ">=0.5.1"
+python-dotenv = ">=1.1.0"
 rich = ">=13.9.4"
 typer = ">=0.15.2"
 websockets = ">=15.0.1"
