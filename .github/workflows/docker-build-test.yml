@@ -20,6 +20,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
+          file: ./mcp/Dockerfile  # Dockerfile이 mcp 디렉토리에 위치함을 명시
           load: true
           tags: mcp-server:test
           cache-from: type=gha
