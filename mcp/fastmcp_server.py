@@ -206,8 +206,8 @@ def stop_ec2_instance(instance_id: str, region: str = None) -> dict:
         return {"status": "error", "message": f"Failed to stop EC2 instance: {str(e)}"}
 
 # 4) FastMCP SSE 앱 생성
-# app = mcp.sse_app()
-app = FastAPI(openapi_url="/openapi.json")  # 명시적 OpenAPI URL 설정
+app = mcp.sse_app()
+# app = FastAPI(openapi_url="/openapi.json")  # 명시적 OpenAPI URL 설정 (테스트용)
 
 # 5) uvicorn으로 실행
 if __name__ == "__main__":

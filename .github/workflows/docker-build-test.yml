@@ -1,0 +1,55 @@
+name: Docker Build and Test
+
+on:
+  push:
+    branches: [ master, mcp-dev ]
+  pull_request:
+    branches: [ master ]  # master 브랜치로의 PR에서만 실행
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Build Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          load: true
+          tags: mcp-server:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Check image size
+        run: docker images mcp-server:test
+      
+      - name: Verify Python installation
+        run: docker run --rm mcp-server:test python --version
+      
+      - name: Check installed packages
+        run: docker run --rm mcp-server:test pip list
+      
+      - name: Test application startup
+        run: |
+          # 컨테이너를 백그라운드로 실행
+          docker run -d --name mcp-test -p 8080:8080 mcp-server:test
+          # 컨테이너가 제대로 시작되었는지 확인
+          sleep 5
+          docker ps
+          docker logs mcp-test
+          # 컨테이너 정리
+          docker stop mcp-test
+          docker rm mcp-test
+      
+      - name: Scan for vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: mcp-server:test
+          format: 'table'
+          exit-code: '0'  # 취약점이 발견되어도 워크플로우를 실패로 처리하지 않음
+          severity: 'CRITICAL,HIGH'
