@@ -4,7 +4,7 @@ on:
   push:
     branches: [ master, mcp-dev ]
   pull_request:
-    branches: [ master ]  # master 브랜치로의 PR에서만 실행
+    branches: [ master ]
 
 jobs:
   build-and-test:
@@ -19,8 +19,8 @@ jobs:
       - name: Build Docker image
         uses: docker/build-push-action@v4
         with:
-          context: .
-          file: ./mcp/Dockerfile  # Dockerfile이 mcp 디렉토리에 위치함을 명시
+          context: ./mcp  # mcp 디렉토리를 빌드 컨텍스트로 설정
+          file: ./mcp/Dockerfile  # Dockerfile 경로 명시
           load: true
           tags: mcp-server:test
           cache-from: type=gha
