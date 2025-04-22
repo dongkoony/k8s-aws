@@ -42,3 +42,6 @@ terraform.rc
 terraform.log
 mcp-server/
 mcp/__pycache__/fastmcp_server.cpython-312.pyc
+terraform.tfvars
+terraform.tfvars
+__pycache__/
