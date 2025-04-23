@@ -1,5 +1,5 @@
 from fastmcp import FastMCP
-from kubernetes import client, config utils
+from kubernetes import client, config
 import boto3
 from fastapi import FastAPI
 import os
