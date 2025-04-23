@@ -1,9 +1,11 @@
 from fastmcp import FastMCP
-from kubernetes import client, config
+from kubernetes import client, config utils
 import boto3
 from fastapi import FastAPI
 import os
 import json
+import yaml
+
 
 # 1) MCP 서버 인스턴스 생성
 mcp = FastMCP("k8s-aws-copilot")
@@ -74,6 +76,69 @@ def describe_pod(namespace: str = "default", pod_name: str = "") -> dict:
         }
     except Exception as e:
         return {"status": "error", "message": f"Failed to describe pod: {str(e)}"}
+
+@mcp.tool()
+def create_pod(name: str, image: str, namespace: str = "default", labels: dict = None) -> dict:
+    """
+    쿠버네티스 파드를 생성합니다.
+
+    Args:
+        name: 생성할 파드의 이름
+        image: 사용할 컨테이너 이미지 (예: nginx, ubuntu:20.04)
+        namespace: 파드를 생성할 네임스페이스 (기본값: default)
+        labels: 파드에 추가할 레이블 (선택 사항)
+    
+    Returns:
+        생성된 파드의 정보를 포함하는 사전
+    """
+    try:
+        # 환경에 따라 쿠버네티스 설정 로드
+        try:
+            config.load_incluster_config()
+        except:
+            config.load_kube_config()
+        
+        # API 클라이언트 생성
+        api_instance = client.CoreV1Api()
+        
+        # 기본 레이블 설정
+        if labels is None:
+            labels = {"app": name}
+        
+        # 파드 스펙 정의
+        pod_manifest = client.V1Pod(
+            api_version="v1",
+            kind="Pod",
+            metadata=client.V1ObjectMeta(
+                name=name,
+                labels=labels
+            ),
+            spec=client.V1PodSpec(
+                containers=[
+                    client.V1Container(
+                        name=name,
+                        image=image,
+                        ports=[client.V1ContainerPort(container_port=80)]
+                    )
+                ]
+            )
+        )
+        
+        # 파드 생성 API 호출
+        api_response = api_instance.create_namespaced_pod(
+            namespace=namespace,
+            body=pod_manifest
+        )
+        
+        return {
+            "status": "success", 
+            "name": api_response.metadata.name,
+            "namespace": api_response.metadata.namespace,
+            "uid": api_response.metadata.uid
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to create pod: {str(e)}"}
+
 
 @mcp.tool()
 def delete_pod(namespace: str = "default", pod_name: str = "") -> dict:
