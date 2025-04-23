@@ -81,15 +81,6 @@ def describe_pod(namespace: str = "default", pod_name: str = "") -> dict:
 def create_pod(name: str, image: str, namespace: str = "default", labels: dict = None) -> dict:
     """
     쿠버네티스 파드를 생성합니다.
-
-    Args:
-        name: 생성할 파드의 이름
-        image: 사용할 컨테이너 이미지 (예: nginx, ubuntu:20.04)
-        namespace: 파드를 생성할 네임스페이스 (기본값: default)
-        labels: 파드에 추가할 레이블 (선택 사항)
-    
-    Returns:
-        생성된 파드의 정보를 포함하는 사전
     """
     try:
         # 환경에 따라 쿠버네티스 설정 로드
