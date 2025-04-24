@@ -130,6 +130,39 @@ def create_pod(name: str, image: str, namespace: str = "default", labels: dict =
     except Exception as e:
         return {"status": "error", "message": f"Failed to create pod: {str(e)}"}
 
+@mcp.tool()
+def apply_yaml(yaml_content: str) -> dict:
+    """
+    클라이언트에서 전달된 YAML 스펙을 그대로 파싱해서 파드를 생성합니다.
+    """
+    try:
+        # 1) 클러스터 설정 로드
+        try:
+            config.load_incluster_config()
+        except:
+            config.load_kube_config()
+
+        # 2) YAML → dict
+        spec = yaml.safe_load(yaml_content)
+
+        # 3) Pod 여부 확인
+        if spec.get("kind") != "Pod":
+            return {"status": "error", "message": "지원하는 Kind: Pod 만 가능합니다."}
+
+        namespace = spec.get("metadata", {}).get("namespace", "default")
+
+        # 4) CoreV1Api 인스턴스 생성 후 dict 그대로 body로 전달
+        api = client.CoreV1Api()
+        resp = api.create_namespaced_pod(namespace=namespace, body=spec)
+
+        return {
+            "status": "success",
+            "name": resp.metadata.name,
+            "namespace": resp.metadata.namespace,
+            "uid": resp.metadata.uid
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"apply_yaml 실패: {e}"}
 
 @mcp.tool()
 def delete_pod(namespace: str = "default", pod_name: str = "") -> dict:
