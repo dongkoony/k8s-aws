@@ -2,7 +2,7 @@ name: Docker Build and Test
 
 on:
   push:
-    branches: [ master, mcp-dev ]
+    branches: [ docker-dev ]
   pull_request:
     branches: [ master ]
 
