@@ -1,0 +1,33 @@
+name: MCP Server Rolling Update (Production)
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  rolling-update-prod:
+    name: Production Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Deploy to k8s-master (Prod)
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.EC2_MSP_SERVER_IP }}
+          username: ubuntu
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            cd ~/k8s-aws
+            git pull origin mcp-dev
+
+            PID=$(ps aux | grep "python.*fastmcp_server.py" | grep -v grep | awk '{print $2}')
+            if [ -n "$PID" ]; then
+              echo "Stopping MCP server (PID: $PID)"
+              kill $PID
+            fi
+
+            cd ~/k8s-aws/mcp
+            nohup python fastmcp_server.py > mcp_server.log 2>&1 &
+
+            echo "MCP server rolling update completed successfully"
