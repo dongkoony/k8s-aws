@@ -142,21 +142,18 @@ def apply_yaml(yaml_content: str) -> dict:
         except:
             config.load_kube_config()
 
-        # 2) YAML → Python 객체
+        # 2) YAML → dict
         spec = yaml.safe_load(yaml_content)
 
-        # 3) CoreV1Api 인스턴스
-        api = client.CoreV1Api()
-
-        # 4) namespaced object 타입에 따라 분기 (여기선 Pod만 예시)
+        # 3) Pod 여부 확인
         if spec.get("kind") != "Pod":
             return {"status": "error", "message": "지원하는 Kind: Pod 만 가능합니다."}
 
         namespace = spec.get("metadata", {}).get("namespace", "default")
 
-        # 5) create API 호출
-        pod = client.V1Pod(**spec)
-        resp = api.create_namespaced_pod(namespace=namespace, body=pod)
+        # 4) CoreV1Api 인스턴스 생성 후 dict 그대로 body로 전달
+        api = client.CoreV1Api()
+        resp = api.create_namespaced_pod(namespace=namespace, body=spec)
 
         return {
             "status": "success",
@@ -166,8 +163,6 @@ def apply_yaml(yaml_content: str) -> dict:
         }
     except Exception as e:
         return {"status": "error", "message": f"apply_yaml 실패: {e}"}
-
-
 
 @mcp.tool()
 def delete_pod(namespace: str = "default", pod_name: str = "") -> dict:
