@@ -4,6 +4,8 @@ import boto3
 from fastapi import FastAPI
 import os
 import json
+import yaml
+
 
 # 1) MCP 서버 인스턴스 생성
 mcp = FastMCP("k8s-aws-copilot")
@@ -74,6 +76,60 @@ def describe_pod(namespace: str = "default", pod_name: str = "") -> dict:
         }
     except Exception as e:
         return {"status": "error", "message": f"Failed to describe pod: {str(e)}"}
+
+@mcp.tool()
+def create_pod(name: str, image: str, namespace: str = "default", labels: dict = None) -> dict:
+    """
+    쿠버네티스 파드를 생성합니다.
+    """
+    try:
+        # 환경에 따라 쿠버네티스 설정 로드
+        try:
+            config.load_incluster_config()
+        except:
+            config.load_kube_config()
+        
+        # API 클라이언트 생성
+        api_instance = client.CoreV1Api()
+        
+        # 기본 레이블 설정
+        if labels is None:
+            labels = {"app": name}
+        
+        # 파드 스펙 정의
+        pod_manifest = client.V1Pod(
+            api_version="v1",
+            kind="Pod",
+            metadata=client.V1ObjectMeta(
+                name=name,
+                labels=labels
+            ),
+            spec=client.V1PodSpec(
+                containers=[
+                    client.V1Container(
+                        name=name,
+                        image=image,
+                        ports=[client.V1ContainerPort(container_port=80)]
+                    )
+                ]
+            )
+        )
+        
+        # 파드 생성 API 호출
+        api_response = api_instance.create_namespaced_pod(
+            namespace=namespace,
+            body=pod_manifest
+        )
+        
+        return {
+            "status": "success", 
+            "name": api_response.metadata.name,
+            "namespace": api_response.metadata.namespace,
+            "uid": api_response.metadata.uid
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"Failed to create pod: {str(e)}"}
+
 
 @mcp.tool()
 def delete_pod(namespace: str = "default", pod_name: str = "") -> dict:
@@ -206,8 +262,8 @@ def stop_ec2_instance(instance_id: str, region: str = None) -> dict:
         return {"status": "error", "message": f"Failed to stop EC2 instance: {str(e)}"}
 
 # 4) FastMCP SSE 앱 생성
-# app = mcp.sse_app()
-app = FastAPI(openapi_url="/openapi.json")  # 명시적 OpenAPI URL 설정
+app = mcp.sse_app()
+# app = FastAPI(openapi_url="/openapi.json")  # 명시적 OpenAPI URL 설정 (테스트용)
 
 # 5) uvicorn으로 실행
 if __name__ == "__main__":
