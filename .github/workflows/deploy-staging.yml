@@ -21,13 +21,13 @@ jobs:
             cd ~/k8s-aws
             git pull origin mcp-dev
 
-            PID=$(ps aux | grep "python.*fastmcp_server.py" | grep -v grep | awk '{print $2}')
+            PID=$(ps aux | grep "python.*main.py" | grep -v grep | awk '{print $2}')
             if [ -n "$PID" ]; then
               echo "Stopping MCP server (PID: $PID)"
               kill $PID
             fi
 
             cd ~/k8s-aws/mcp
-            nohup python fastmcp_server.py > mcp_server.log 2>&1 &
+            nohup python main.py > mcp_server.log 2>&1 &
 
             echo "MCP server rolling update completed successfully"
