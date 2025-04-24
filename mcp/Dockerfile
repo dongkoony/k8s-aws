@@ -1,6 +1,13 @@
 # 빌드 단계: Poetry 사용
-# 여기서는 Python 3.12 slim 이미지를 기반으로 빌드 단계 시작 (builder라는 이름으로 지정)
-FROM python:3.12-slim AS builder
+FROM python:3.12.2-slim AS builder
+
+# 시스템 패키지 업데이트 및 보안 패치
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # Poetry 패키지 매니저 설치 (의존성 관리를 위해 필요)
 RUN pip install poetry
@@ -14,8 +21,15 @@ COPY pyproject.toml poetry.lock* ./
 RUN poetry export -f requirements.txt -o requirements.txt --without-hashes
 
 # 런타임 단계: pip 사용
-# 이미지 크기 최적화를 위해 다시 Python 3.12 slim 이미지에서 시작
-FROM python:3.12-slim
+FROM python:3.12.2-slim
+
+# 시스템 패키지 업데이트 및 보안 패치
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # 작업 디렉토리 생성
 WORKDIR /app
