@@ -10,7 +10,8 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # Poetry 패키지 매니저 설치 (의존성 관리를 위해 필요)
-RUN pip install poetry
+RUN pip install poetry && \
+    pip install poetry-plugin-export
 
 # 프로젝트 의존성 파일 복사 (pyproject.toml과 poetry.lock)
 # '*'는 poetry.lock 파일이 존재하지 않을 경우에도 오류 없이 진행하기 위함
