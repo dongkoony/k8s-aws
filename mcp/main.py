@@ -40,7 +40,7 @@ app = mcp.sse_app()
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "fastmcp_server:app",  # '파일명:app객체'
+        "main:app",  # '파일명:app객체'
         host="0.0.0.0",
         port=8080,
         log_level="info",
