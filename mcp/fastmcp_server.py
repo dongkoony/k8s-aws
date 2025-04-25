@@ -133,7 +133,7 @@ def create_pod(name: str, image: str, namespace: str = "default", labels: dict =
 @mcp.tool()
 def apply_yaml(yaml_content: str) -> dict:
     """
-    클라이언트에서 전달된 YAML 스펙을 그대로 파싱해서 파드를 생성합니다.
+    YAML 콘텐츠를 파싱해 Pod 오브젝트를 생성합니다.
     """
     try:
         # 1) 클러스터 설정 로드
