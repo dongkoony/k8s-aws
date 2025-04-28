@@ -23,18 +23,18 @@ for fn in [
 
 # Deployment 관련 툴 등록
 from tools.kubernetes.deployments import (
-    list_deployments,
-    describe_deployment,
-    create_deployment,
-    update_deployment,
-    delete_deployment,
+  list_deployments,
+  describe_deployment,
+  create_deployment,
+  update_deployment,
+  delete_deployment,
 )
 for fn in [
-    list_deployments,
-    describe_deployment,
-    create_deployment,
-    update_deployment,
-    delete_deployment,
+  list_deployments,
+  describe_deployment,
+  create_deployment,
+  update_deployment,
+  delete_deployment,
 ]:
     mcp.tool()(fn)
 
