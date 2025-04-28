@@ -1,10 +1,10 @@
 # main.py
 from fastmcp import FastMCP
 
-# 1) FastMCP 인스턴스 생성
+# FastMCP 인스턴스 생성
 mcp = FastMCP("k8s-aws-copilot")
 
-# 2) Kubernetes 관련 툴 등록
+# Kubernetes 관련 툴 등록
 from tools.kubernetes.pods import (
   list_pods,
   describe_pod,
@@ -38,7 +38,29 @@ for fn in [
 ]:
     mcp.tool()(fn)
 
-# 3) AWS EC2 관련 툴 등록
+# Advanced Kubernetes 기능 등록
+from tools.kubernetes.advanced import (
+    list_hpa,
+    create_hpa,
+    list_statefulsets,
+    create_statefulset,
+    create_cronjob,
+    create_canary_deployment,
+    create_pod_disruption_budget,
+)
+
+for fn in [
+    list_hpa,
+    create_hpa,
+    list_statefulsets,
+    create_statefulset,
+    create_cronjob, 
+    create_canary_deployment,
+    create_pod_disruption_budget,
+]:
+    mcp.tool()(fn)
+
+# AWS EC2 관련 툴 등록
 from tools.aws.ec2 import (
   list_ec2_instances,
   describe_ec2_instance,
@@ -53,10 +75,10 @@ for fn in [
 ]:
   mcp.tool()(fn)
 
-# 4) FastMCP SSE 앱 생성
+# FastMCP SSE 앱 생성
 app = mcp.sse_app()
 
-# 5) uvicorn으로 실행
+# uvicorn으로 실행
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
