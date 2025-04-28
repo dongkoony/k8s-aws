@@ -4,12 +4,18 @@ from flask import Flask, request, jsonify
 from tools.kubernetes.pods import delete_pod
 from tools.kubernetes.deployments import delete_deployment
 from tools.aws.ec2 import stop_ec2_instance
+import json
 
 app = Flask(__name__)
 
 @app.route("/admin-approve", methods=["POST"])
 def admin_approve():
-  payload = request.json
+  # 슬랙은 payload를 form-urlencoded로 보냄
+  if request.content_type and request.content_type.startswith("application/x-www-form-urlencoded"):
+    payload = json.loads(request.form["payload"])
+  else:
+    payload = request.json
+
   # 슬랙에서 온 버튼 value 파싱
   value = payload["actions"][0]["value"]  # 예: "pod|nginx-test|default|파드 삭제"
   resource_type, resource_name, namespace, action = value.split("|")
