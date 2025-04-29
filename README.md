@@ -1,4 +1,4 @@
-# Kubernetes on AWS with Terraform
+# Kubernetes & AWS & MCP
 
 [![EN](https://img.shields.io/badge/lang-en-blue.svg)](README-en.md) 
 [![KR](https://img.shields.io/badge/lang-kr-red.svg)](README.md)
@@ -24,6 +24,8 @@
 - **운영체제**: Ubuntu 22.04 LTS
 - **클라우드**: AWS
 - **IaC**: Terraform 1.8+
+- **FastMCP**: Python 기반 MCP 서버 프레임워크
+- **FastAPI**: Python 고성능 웹 프레임워크
 
 ## 시스템 요구사항 (System Requirements)
 - **마스터 노드**: 최소 t3.medium (2 vCPU, 4GB RAM)
@@ -32,6 +34,7 @@
 - **네트워크**: VPC 내 프라이빗 서브넷
 
 ## 주요 기능 (Key Features)
+- **FastMCP+FastAPI 기반 MCP 서버**: Claude Desktop 및 Cursor IDE에서 자연어로 제어 가능 **(EC2, Kubernetes)**
 - Kubernetes v1.31 클러스터 자동 구성
 - Calico CNI v3.28.0 자동 설치 및 구성
 - SSH 보안 강화 (포트 변경)
