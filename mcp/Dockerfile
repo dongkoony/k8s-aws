@@ -18,8 +18,7 @@ RUN pip install poetry
 COPY pyproject.toml poetry.lock* ./
 
 # Poetry를 사용하여 의존성을 requirements.txt 형식으로 내보내기
-# --without-hashes 옵션은 해시 정보를 제외하여 pip 설치 시 호환성 문제 방지
-RUN poetry export -f requirements.txt -o requirements.txt --without-hashes
+RUN poetry export > requirements.txt
 
 # 런타임 단계: pip 사용
 # 이미지 크기 최적화를 위해 다시 Python 3.12 slim 이미지에서 시작
