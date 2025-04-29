@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from tools.kubernetes.pods import delete_pod
 from tools.kubernetes.deployments import delete_deployment
 from tools.aws.ec2 import stop_ec2_instance
+from workflows.slack_approval import send_approval_request_with_button, send_result_notification
 import json
 
 app = Flask(__name__)
@@ -29,6 +30,10 @@ def admin_approve():
     result = stop_ec2_instance(instance_id=resource_name)
   else:
     result = {"status": "error", "message": "알 수 없는 리소스 타입"}
+
+  # 승인 결과 알림 전송
+  if result and result.get("status") == "success":
+    send_result_notification(action, payload["user"]["username"])
 
   return jsonify(result)
 
