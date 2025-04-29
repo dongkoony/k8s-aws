@@ -3,9 +3,6 @@ name: Slack Server Deployment (Staging)
 on:
   push:
     branches: [ mcp-dev ]
-    paths:
-      - 'workflows/**'
-      - 'utils/**'
 
 jobs:
   deploy-staging:

@@ -1,11 +1,8 @@
-name: SlackServer Deployment (Production)
+name: Slack Server Deployment (Production)
 
 on:
   push:
     branches: [ master ]
-    paths:
-      - 'workflows/**'
-      - 'utils/**'
 
 jobs:
   deploy-production:
