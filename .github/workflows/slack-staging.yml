@@ -48,17 +48,19 @@ jobs:
             export SLACK_SIGNING_SECRET="${{ secrets.SLACK_SIGNING_SECRET }}"
             export FLASK_ENV="staging"
 
-            # 서버 시작
-            cd workflows
-            nohup python -m slack_server > ../logs/slack_server.log 2>&1 &
-            echo $! > ../.pid/slack_server.pid
+            # 서버 시작 (절대 경로 사용)
+            cd ~/k8s-aws/mcp/workflows
+            python3 -m slack_server > ~/k8s-aws/mcp/logs/slack_server.log 2>&1 &
+            echo $! > ~/k8s-aws/mcp/.pid/slack_server.pid
 
-            # 서버 상태 확인
+            # 서버 상태 확인 (절대 경로 사용)
             sleep 5
-            if ps -p $(cat ../.pid/slack_server.pid) > /dev/null; then
+            if ps -p $(cat ~/k8s-aws/mcp/.pid/slack_server.pid) > /dev/null; then
               echo "Slack server started successfully"
+              exit 0
             else
               echo "Failed to start Slack server"
+              tail -n 20 ~/k8s-aws/mcp/logs/slack_server.log
               exit 1
             fi
 
@@ -69,11 +71,22 @@ jobs:
           username: ubuntu
           key: ${{ secrets.AWS_SSH_KEY }}
           script: |
-            cd ~/k8s-aws/mcp
-            if [ -f .pid/slack_server.pid ] && ps -p $(cat .pid/slack_server.pid) > /dev/null; then
-              curl -s http://localhost:8081/health || exit 1
-              echo "Slack server is running and healthy"
-            else
+            # 프로세스 상태 확인 (절대 경로 사용)
+            if [ ! -f ~/k8s-aws/mcp/.pid/slack_server.pid ] || ! ps -p $(cat ~/k8s-aws/mcp/.pid/slack_server.pid) > /dev/null; then
               echo "Slack server is not running"
+              tail -n 20 ~/k8s-aws/mcp/logs/slack_server.log
               exit 1
-            fi 
+            fi
+
+            # 헬스 체크
+            for i in {1..3}; do
+              if curl -s http://localhost:8081/health; then
+                echo "Health check passed"
+                exit 0
+              fi
+              sleep 5
+            done
+            
+            echo "Health check failed after 3 attempts"
+            tail -n 20 ~/k8s-aws/mcp/logs/slack_server.log
+            exit 1 
