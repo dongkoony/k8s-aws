@@ -24,13 +24,17 @@ jobs:
             cd ~/k8s-aws
 
             # 기존 프로세스 정리
-            if [ -f .pid/slack_server.pid ]; then
-              pid=$(cat .pid/slack_server.pid)
+            if [ -f mcp/.pid/slack_server.pid ]; then
+              pid=$(cat mcp/.pid/slack_server.pid)
               if ps -p $pid > /dev/null; then
                 kill $pid
                 echo "Stopped existing Slack server (PID: $pid)"
               fi
             fi
+
+            # 로컬 변경사항 저장
+            cd mcp
+            git stash
 
             # 최신 코드 가져오기
             git fetch origin mcp-dev
@@ -65,7 +69,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.AWS_SSH_KEY }}
           script: |
-            cd ~/k8s-aws
+            cd ~/k8s-aws/mcp
             if [ -f .pid/slack_server.pid ] && ps -p $(cat .pid/slack_server.pid) > /dev/null; then
               curl -s http://localhost:8081/health || exit 1
               echo "Slack server is running and healthy"
