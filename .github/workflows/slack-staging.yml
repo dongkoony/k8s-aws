@@ -1,0 +1,108 @@
+name: Slack Server Deployment (Staging)
+
+on:
+  push:
+    branches: [ mcp-dev ]
+    paths:
+      - 'workflows/**'
+      - 'utils/**'
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run tests
+        run: |
+          python -m pytest tests/workflows/test_*.py
+          python -m pytest tests/utils/test_*.py
+
+      - name: Deploy to Staging Server
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.EC2_MSP_SERVER_IP }}
+          username: ubuntu
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            # 디렉토리 이동
+            cd ~/k8s-aws
+
+            # 기존 프로세스 정리
+            if [ -f .pid/slack_server.pid ]; then
+              pid=$(cat .pid/slack_server.pid)
+              if ps -p $pid > /dev/null; then
+                kill $pid
+                echo "Stopped existing Slack server (PID: $pid)"
+              fi
+            fi
+
+            # 최신 코드 가져오기
+            git fetch origin mcp-dev
+            git checkout mcp-dev
+            git pull origin mcp-dev
+
+            # 필요한 디렉토리 생성
+            mkdir -p .pid logs
+
+            # 환경 변수 설정
+            export SLACK_SIGNING_SECRET="${{ secrets.SLACK_SIGNING_SECRET }}"
+            export FLASK_ENV="staging"
+
+            # 서버 시작
+            cd workflows
+            nohup python -m slack_server > ../logs/slack_server.log 2>&1 &
+            echo $! > ../.pid/slack_server.pid
+
+            # 서버 상태 확인
+            sleep 5
+            if ps -p $(cat ../.pid/slack_server.pid) > /dev/null; then
+              echo "Slack server started successfully"
+            else
+              echo "Failed to start Slack server"
+              exit 1
+            fi
+
+      - name: Verify Deployment
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.EC2_MSP_SERVER_IP }}
+          username: ubuntu
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            cd ~/k8s-aws
+            if [ -f .pid/slack_server.pid ] && ps -p $(cat .pid/slack_server.pid) > /dev/null; then
+              curl -s http://localhost:8081/health || exit 1
+              echo "Slack server is running and healthy"
+            else
+              echo "Slack server is not running"
+              exit 1
+            fi
+
+      - name: Slack Notification
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
+          text: |
+            Staging Deployment ${{ job.status == 'success' && '✅' || '❌' }}
+            Branch: mcp-dev
+            Commit: ${{ github.event.head_commit.message }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
