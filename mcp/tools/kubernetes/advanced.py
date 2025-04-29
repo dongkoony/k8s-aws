@@ -26,8 +26,8 @@ def list_hpa(namespace: str = "default") -> dict:
     }
 
 def create_hpa(name: str, target_kind: str, target_name: str, 
-               namespace: str = "default", min_replicas: int = 1, 
-               max_replicas: int = 10, cpu_utilization: int = 70) -> dict: 
+            namespace: str = "default", min_replicas: int = 1, 
+            max_replicas: int = 10, cpu_utilization: int = 70) -> dict: 
     """
     CPU 사용률 기반 HorizontalPodAutoscaler를 생성합니다.
     """
@@ -99,7 +99,7 @@ def list_statefulsets(namespace: str = "default") -> dict:
     }
 
 def create_statefulset(name: str, image: str, namespace: str = "default", 
-                      replicas: int = 1, storage_size: str = "1Gi") -> dict:
+                    replicas: int = 1, storage_size: str = "1Gi") -> dict:
     """
     이름, 이미지, 복제 수, 스토리지 크기를 이용해 StatefulSet을 생성합니다.
     """
@@ -163,7 +163,7 @@ def create_statefulset(name: str, image: str, namespace: str = "default",
     }
 
 def create_cronjob(name: str, schedule: str, image: str, 
-                  command: list = None, namespace: str = "default") -> dict:
+                command: list = None, namespace: str = "default") -> dict:
     """
     이름, 일정, 이미지, 명령어를 이용해 CronJob을 생성합니다.
     """
@@ -211,7 +211,7 @@ def create_cronjob(name: str, schedule: str, image: str,
     }
 
 def create_canary_deployment(name: str, namespace: str = "default", new_image: str = None,
-                          canary_replicas: int = 1, total_replicas: int = 10) -> dict:
+                        canary_replicas: int = 1, total_replicas: int = 10) -> dict:
     """
     카나리 배포를 생성합니다. 새 버전을 일부 사용자에게만 적용하는 방식입니다.
     """
