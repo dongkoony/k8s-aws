@@ -1,4 +1,4 @@
-name: Slack Server Deployment (Staging)
+name: Server Deployment (Staging)
 
 on:
   push:
@@ -92,17 +92,4 @@ jobs:
             else
               echo "Slack server is not running"
               exit 1
-            fi
-
-      - name: Slack Notification
-        uses: 8398a7/action-slack@v3
-        if: always()
-        with:
-          status: ${{ job.status }}
-          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
-          text: |
-            Staging Deployment ${{ job.status == 'success' && '✅' || '❌' }}
-            Branch: mcp-dev
-            Commit: ${{ github.event.head_commit.message }}
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL  }} 
+            fi 

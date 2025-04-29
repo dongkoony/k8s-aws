@@ -1,4 +1,4 @@
-name: Slack Server Deployment (Production)
+name: Server Deployment (Production)
 
 on:
   push:
@@ -115,18 +115,4 @@ jobs:
             done
             
             echo "Health check failed after 3 attempts"
-            exit 1
-
-      - name: Slack Notification
-        uses: 8398a7/action-slack@v3
-        if: always()
-        with:
-          status: ${{ job.status }}
-          fields: repo,message,commit,author,action,eventName,ref,workflow,job,took
-          text: |
-            Production Deployment ${{ job.status == 'success' && '✅' || '❌' }}
-            Branch: master
-            Commit: ${{ github.event.head_commit.message }}
-            Environment: Production
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }} 
+            exit 1 
