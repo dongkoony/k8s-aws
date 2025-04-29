@@ -47,3 +47,13 @@ terraform.tfvars
 __pycache__/
 test.txt
 script/worker_setup.sh
+mcp-server/
+.env
+mcp/action_log.txt
+mcp/.pid/slack_server.pid
+mcp/mcp_server.log
+mcp/logs/slack_server.log
+
+
+# 테스트 중
+aws-infra-terraform/ 
