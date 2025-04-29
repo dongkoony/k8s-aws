@@ -237,5 +237,5 @@ def forbidden_error(error):
     }), 403
 
 if __name__ == "__main__":
-    # 프로덕션에서는 gunicorn 등의 WSGI 서버 사용 권장
+    
     app.run(host="0.0.0.0", port=8081, ssl_context="adhoc")

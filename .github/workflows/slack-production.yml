@@ -129,4 +129,4 @@ jobs:
             Commit: ${{ github.event.head_commit.message }}
             Environment: Production
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }} 
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }} 
