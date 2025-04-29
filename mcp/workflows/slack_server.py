@@ -6,6 +6,8 @@ import hmac
 import hashlib
 import time
 import json
+import os
+from dotenv import load_dotenv
 from tools.kubernetes.pods import delete_pod
 from tools.kubernetes.deployments import delete_deployment
 from tools.aws.ec2 import stop_ec2_instance
@@ -13,7 +15,7 @@ from tools.aws.ec2 import stop_ec2_instance
 app = Flask(__name__)
 
 # Slack 설정
-SLACK_SIGNING_SECRET = "YOUR_SLACK_SIGNING_SECRET"
+SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET")
 
 # 리소스 타입별 이모지 매핑
 RESOURCE_EMOJI = {
