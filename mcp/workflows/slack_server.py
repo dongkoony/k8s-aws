@@ -12,10 +12,15 @@ from tools.kubernetes.pods import delete_pod
 from tools.kubernetes.deployments import delete_deployment
 from tools.aws.ec2 import stop_ec2_instance
 
+# 환경 변수 로드
+load_dotenv()
+
 app = Flask(__name__)
 
 # Slack 설정
 SLACK_SIGNING_SECRET = os.getenv("SLACK_SIGNING_SECRET")
+if not SLACK_SIGNING_SECRET:
+    raise ValueError("SLACK_SIGNING_SECRET 환경 변수가 설정되지 않았습니다.")
 
 # 리소스 타입별 이모지 매핑
 RESOURCE_EMOJI = {
@@ -239,5 +244,8 @@ def forbidden_error(error):
     }), 403
 
 if __name__ == "__main__":
-    
-    app.run(host="0.0.0.0", port=8081, ssl_context="adhoc")
+    try:
+        from werkzeug.serving import run_simple
+        run_simple("0.0.0.0", 8081, app)
+    except Exception as e:
+        print(f"서버 시작 중 오류 발생: {str(e)}")
