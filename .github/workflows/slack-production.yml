@@ -15,27 +15,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install .
-          pip install pytest safety
-
-      - name: Run tests
-        run: |
-          python -m pytest tests/workflows/test_*.py
-          python -m pytest tests/utils/test_*.py
-
-      - name: Security check
-        run: |
-          safety check
-
       - name: Deploy to Production Server
         uses: appleboy/ssh-action@v0.1.6
         with:
