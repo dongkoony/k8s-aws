@@ -153,6 +153,27 @@ for fn in [
 ]:
   mcp.tool()(fn)
 
+# Kubernetes Monitoring
+from tools.kubernetes.monitoring import (
+  get_cluster_metrics,
+  get_pod_metrics,
+  get_node_health,
+  get_deployment_health,
+  get_pod_logs_analysis,
+  get_resource_events
+)
+
+# 모니터링 도구 등록
+for fn in [
+  get_cluster_metrics,
+  get_pod_metrics,
+  get_node_health,
+  get_deployment_health,
+  get_pod_logs_analysis,
+  get_resource_events,
+]:
+  mcp.tool()(fn)
+
 # FastMCP SSE 앱 생성
 app = mcp.sse_app()
 
