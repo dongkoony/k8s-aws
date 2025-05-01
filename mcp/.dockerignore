@@ -1,0 +1,39 @@
+# Git 관련
+.git
+.gitignore
+
+# Python 바이트코드
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 빌드·배포 아티팩트
+build/
+dist/
+*.egg-info/
+
+# 가상환경
+venv/
+.env/
+.env.*
+
+# 테스트 코드
+tests/
+__tests__/
+
+# IDE/에디터 설정
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# 로컬 설정 파일
+*.local
+*.ini
+
+# Docker 자체 파일
+Dockerfile*
+docker-compose*.yml
+
+# 로그 파일
+*.log
