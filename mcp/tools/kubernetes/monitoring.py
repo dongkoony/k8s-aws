@@ -101,7 +101,7 @@ def get_pod_metrics(namespace: str = "default") -> Dict[str, Any]:
 
 def get_node_health() -> Dict[str, Any]:
     """
-    노드 상태 및 건강도 체크
+    노드 상태 및 health check
     """
     try:
         v1 = client.CoreV1Api()
@@ -135,7 +135,7 @@ def get_node_health() -> Dict[str, Any]:
 
 def get_deployment_health(namespace: str = "default") -> Dict[str, Any]:
     """
-    디플로이먼트 상태 및 건강도 체크
+    디플로이먼트 상태 및 health check
     """
     try:
         apps_v1 = client.AppsV1Api()
